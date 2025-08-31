@@ -1,4 +1,4 @@
-(translates_to (transcript ENST00000353703) (protein P31946))
+(translates_to (transcript ENST00000339276) (protein P60880))
 (translates_to (transcript ENST00000372839) (protein P31946))
 (translates_to (transcript ENST00000264335) (protein P62258))
 (translates_to (transcript ENST00000571732) (protein P62258))

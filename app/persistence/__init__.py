@@ -1,2 +1,3 @@
 from .annotation_storage_service import AnnotationStorageService
 from .user_storage_service import UserStorageService
+from .shared_annotation_storage_service import SharedAnnotationStorageService

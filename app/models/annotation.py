@@ -20,6 +20,8 @@ class Annotation(Schema):
     node_count_by_label = None
     edge_count_by_label = None
     status = None
+    created_at = None
+    updated_at = None
 
     def __init__(self, **kwargs):
         self.schema = {
@@ -77,12 +79,12 @@ class Annotation(Schema):
         super().__init__(self.schema_name, self.schema, kwargs)
 
     def __str__(self):
-        return f"""user_id: {self.user_id}, request: {self.request}, 
+        return f"""user_id: {self.user_id}, request: {self.request},
         query: {self.query},
         title: {self.title}, summary: {self.summary},
         question: {self.question}, answer: {self.answer},
         node_count: {self.node_count}, edge_count: {self.edge_count},
         node_count_by_label: {self.node_count_by_label},
         edge_count_by_label: {self.edge_count_by_label},
-        status: {self.status}
+        status: {self.status}, created_at: {self.created_at}, updated_at: {self.updated_at}
         """
