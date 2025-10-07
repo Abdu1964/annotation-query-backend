@@ -28,7 +28,7 @@ jobs:
           mkdir -p $HOME/services/annotation-query-backend
           cat > $HOME/services/annotation-query-backend/.env << EOF
           # Application
-          APP_PORT=5006
+          APP_PORT=5007
           
           # MongoDB
           MONGO_URI=mongodb://mongodb:27017/annotation
@@ -83,9 +83,9 @@ jobs:
           DOCKER_HUB_REPO=abdum1964/annotation:staging
           
           # Ports
-          MONGODB_DOCKER_PORT=27021
-          CADDY_PORT=5557
-          CADDY_PORT_FORWARD=6001
+          MONGODB_DOCKER_PORT=27022
+          CADDY_PORT=5558
+          CADDY_PORT_FORWARD=6002
           EOF
 
           
