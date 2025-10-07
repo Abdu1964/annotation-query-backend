@@ -1,4 +1,4 @@
-### Annotaion Service..
+### Annotaion Service
 
 backend API.
 
