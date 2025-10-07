@@ -1,0 +1,155 @@
+name: CD - pull Docker image & build with ansible
+
+on:
+  repository_dispatch:
+    types: [deploy-staging]
+
+jobs:
+  deploy:
+    runs-on: self-hosted
+    steps:
+      - name: Debug workflow info
+        run: |
+          echo "Event Type: ${{ github.event.action }}"
+          echo "Image Tag: ${{ github.event.client_payload.image_tag }}"
+          echo "Triggered by: ${{ github.actor }}"
+          
+      - name: Checkout current repository
+        uses: actions/checkout@v4
+        
+      - name: Checkout Ansible repository
+        uses: actions/checkout@v4
+        with:
+          repository: abdu1964/ansible-deploy_v2.0
+          path: ansible-deploy_v2.0
+
+      - name: Create .env file for Annotation Backend
+        run: |
+          mkdir -p $HOME/services/annotation-backend
+          cat > $HOME/services/annotation-backend/.env << EOF
+          # Application
+          APP_PORT=${{ secrets.APP_PORT }}
+          
+          # MongoDB
+          MONGO_URI=${{ secrets.MONGO_URI }}
+          
+          # Redis
+          REDIS_HOST=${{ secrets.REDIS_HOST }}
+          REDIS_PORT=${{ secrets.REDIS_PORT }}
+          REDIS_URL=${{ secrets.REDIS_URL }}
+          REDIS_EXPIRATION=${{ secrets.REDIS_EXPIRATION }}
+          
+          # Neo4j - External servers
+          NEO4J_URI=${{ secrets.NEO4J_URI }}
+          NEO4J_USERNAME=${{ secrets.NEO4J_USERNAME }}
+          NEO4J_PASSWORD=${{ secrets.NEO4J_PASSWORD }}
+          HUMAN_NEO4J_URI=${{ secrets.HUMAN_NEO4J_URI }}
+          HUMAN_NEO4J_USERNAME=${{ secrets.HUMAN_NEO4J_USERNAME }}
+          HUMAN_NEO4J_PASSWORD=${{ secrets.HUMAN_NEO4J_PASSWORD }}
+          FLY_NEO4J_URI=${{ secrets.FLY_NEO4J_URI }}
+          FLY_NEO4J_USERNAME=${{ secrets.FLY_NEO4J_USERNAME }}
+          FLY_NEO4J_PASSWORD=${{ secrets.FLY_NEO4J_PASSWORD }}
+          
+          # LLM
+          LLM_MODEL=${{ secrets.LLM_MODEL }}
+          GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}
+          
+          # Security
+          JWT_SECRET=${{ secrets.JWT_SECRET }}
+          SECRET_KEY=${{ secrets.SECRET_KEY }}
+          
+          # Email
+          MAIL_SERVER=${{ secrets.MAIL_SERVER }}
+          MAIL_PORT=${{ secrets.MAIL_PORT }}
+          MAIL_USERNAME=${{ secrets.MAIL_USERNAME }}
+          MAIL_PASSWORD=${{ secrets.MAIL_PASSWORD }}
+          MAIL_DEFAULT_SENDER=${{ secrets.MAIL_DEFAULT_SENDER }}
+          MAIL_USE_TLS=${{ secrets.MAIL_USE_TLS }}
+          MAIL_USE_SSL=${{ secrets.MAIL_USE_SSL }}
+          
+          # Monitoring
+          SENTRY_DSN=${{ secrets.SENTRY_DSN }}
+          AXIOM_TOKEN=${{ secrets.AXIOM_TOKEN }}
+          AXIOM_DATASET=${{ secrets.AXIOM_DATASET }}
+          AXIOM_PERFORMANCE_LOGS=${{ secrets.AXIOM_PERFORMANCE_LOGS }}
+          
+          # External Services
+          MORK_URL=${{ secrets.MORK_URL }}
+          
+          # File Paths
+          PARENT_DIR=${{ secrets.PARENT_DIR }}
+          
+          # Docker
+          DOCKER_HUB_REPO=${{ secrets.DOCKER_HUB_REPO }}
+          
+          # Ports
+          MONGODB_DOCKER_PORT=${{ secrets.MONGODB_DOCKER_PORT }}
+          CADDY_PORT=${{ secrets.CADDY_PORT }}
+          CADDY_PORT_FORWARD=${{ secrets.CADDY_PORT_FORWARD }}
+          EOF
+
+      - name: Copy .env file to Ansible templates directory
+        run: |
+          cp $HOME/services/annotation-query-backend/.env ansible-deploy_v2.0/playbooks/roles/annotation-query-backend/templates/.env
+
+          
+      - name: Create dynamic inventory
+        run: |
+          cd ansible-deploy_v2.0
+          mkdir -p inventory
+          CURRENT_USER=$(whoami)
+          USER_HOME=$HOME
+          cat > inventory/hosts.ini <<EOL
+          [Annotation_Staging]
+          localhost ansible_connection=local ansible_user=$CURRENT_USER ansible_become=false ansible_user_dir=$USER_HOME
+          EOL
+          echo "Inventory created for user: $CURRENT_USER"
+          
+      - name: Create dynamic playbook
+        run: |
+          cd ansible-deploy_v2.0
+          mkdir -p playbooks
+          cat > playbooks/deploy_server.yml <<EOL
+          ---
+          # deploy_Annotation_Backend
+          - name: Deploy Annotation query backend staging Service
+            hosts: Annotation_Staging
+            tags: Annotation_Staging
+            become: no
+            tasks:
+              - include_role:
+                  name: annotation-query-backend
+                  tasks_from: staging-production-deploy.yml
+
+          EOL
+          echo "Playbook created"
+          
+      - name: Ansible configuration
+        run: |
+          cd ansible-deploy_v2.0
+          cat > ansible.cfg <<EOL
+          [defaults]
+          interpreter_python = /usr/bin/python3
+          host_key_checking = False
+          inventory = inventory/hosts.ini
+          become = false
+          remote_user = $(whoami)
+          [privilege_escalation]
+          become = false
+          become_method = sudo
+          become_user = root
+          become_ask_pass = false
+          EOL
+          
+      - name: Deploy Annotation Backend to Staging with Ansible
+        run: |
+          cd ansible-deploy_v2.0
+          echo "Running as user: $(whoami)"
+          echo "Home directory: $HOME"
+          ansible-playbook -i inventory/hosts.ini playbooks/deploy_server.yml \
+            --tags "Annotation_Staging" \
+            -e "install_dir=$HOME/services/annotation-backend" \
+            -e "ansible_user_id=$(whoami)" \
+            -e "ansible_user_dir=$HOME" \
+            -e "annotation_environment=staging" \
+            -vs
