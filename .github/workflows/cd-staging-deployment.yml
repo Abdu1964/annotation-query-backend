@@ -25,19 +25,19 @@ jobs:
 
       - name: Create .env file for Annotation Backend
         run: |
-          mkdir -p $HOME/services/annotation-backend
-          cat > $HOME/services/annotation-backend/.env << EOF
+          mkdir -p $HOME/services/annotation-query-backend
+          cat > $HOME/services/annotation-query-backend/.env << EOF
           # Application
-          APP_PORT=${{ secrets.APP_PORT }}
+          APP_PORT=5006
           
           # MongoDB
-          MONGO_URI=${{ secrets.MONGO_URI }}
+          MONGO_URI=mongodb://mongodb:27017/annotation
           
           # Redis
-          REDIS_HOST=${{ secrets.REDIS_HOST }}
-          REDIS_PORT=${{ secrets.REDIS_PORT }}
-          REDIS_URL=${{ secrets.REDIS_URL }}
-          REDIS_EXPIRATION=${{ secrets.REDIS_EXPIRATION }}
+          REDIS_HOST=redis
+          REDIS_PORT=6379
+          REDIS_URL=redis://redis:6379/0
+          REDIS_EXPIRATION=3600
           
           # Neo4j - External servers
           NEO4J_URI=${{ secrets.NEO4J_URI }}
@@ -51,7 +51,7 @@ jobs:
           FLY_NEO4J_PASSWORD=${{ secrets.FLY_NEO4J_PASSWORD }}
           
           # LLM
-          LLM_MODEL=${{ secrets.LLM_MODEL }}
+          LLM_MODEL=gemini
           GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}
           
           # Security
@@ -64,33 +64,29 @@ jobs:
           MAIL_USERNAME=${{ secrets.MAIL_USERNAME }}
           MAIL_PASSWORD=${{ secrets.MAIL_PASSWORD }}
           MAIL_DEFAULT_SENDER=${{ secrets.MAIL_DEFAULT_SENDER }}
-          MAIL_USE_TLS=${{ secrets.MAIL_USE_TLS }}
-          MAIL_USE_SSL=${{ secrets.MAIL_USE_SSL }}
+          MAIL_USE_TLS=False
+          MAIL_USE_SSL=False
           
           # Monitoring
           SENTRY_DSN=${{ secrets.SENTRY_DSN }}
           AXIOM_TOKEN=${{ secrets.AXIOM_TOKEN }}
-          AXIOM_DATASET=${{ secrets.AXIOM_DATASET }}
-          AXIOM_PERFORMANCE_LOGS=${{ secrets.AXIOM_PERFORMANCE_LOGS }}
+          AXIOM_DATASET=application-logs
+          AXIOM_PERFORMANCE_LOGS=performance-metrics
           
           # External Services
           MORK_URL=${{ secrets.MORK_URL }}
           
           # File Paths
-          PARENT_DIR=${{ secrets.PARENT_DIR }}
+          PARENT_DIR=/tmp/test_data
           
           # Docker
-          DOCKER_HUB_REPO=${{ secrets.DOCKER_HUB_REPO }}
+          DOCKER_HUB_REPO=abdum1964/annotation:staging
           
           # Ports
-          MONGODB_DOCKER_PORT=${{ secrets.MONGODB_DOCKER_PORT }}
-          CADDY_PORT=${{ secrets.CADDY_PORT }}
-          CADDY_PORT_FORWARD=${{ secrets.CADDY_PORT_FORWARD }}
+          MONGODB_DOCKER_PORT=27021
+          CADDY_PORT=5557
+          CADDY_PORT_FORWARD=6001
           EOF
-
-      - name: Copy .env file to Ansible templates directory
-        run: |
-          cp $HOME/services/annotation-query-backend/.env ansible-deploy_v2.0/playbooks/roles/annotation-query-backend/templates/.env
 
           
       - name: Create dynamic inventory
@@ -148,8 +144,8 @@ jobs:
           echo "Home directory: $HOME"
           ansible-playbook -i inventory/hosts.ini playbooks/deploy_server.yml \
             --tags "Annotation_Staging" \
-            -e "install_dir=$HOME/services/annotation-backend" \
+            -e "install_dir=$HOME/services/annotation-query-backend" \
             -e "ansible_user_id=$(whoami)" \
             -e "ansible_user_dir=$HOME" \
             -e "annotation_environment=staging" \
-            -vs
+            -v
