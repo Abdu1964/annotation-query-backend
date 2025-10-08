@@ -55,7 +55,6 @@ mongo_init()
 
 try:
     es_db = Elasticsearch(ES_URL, api_key=ES_API_KEY)
-    # optional: ping to check if it’s reachable
     if es_db.ping():
         print("Elasticsearch connected")
     else:
