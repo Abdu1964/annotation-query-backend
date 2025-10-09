@@ -52,13 +52,22 @@ limiter = Limiter(
 )
 
 mongo_init()
-print(ES_URL, ES_API_KEY)
-es_db = Elasticsearch(ES_URL, api_key=ES_API_KEY)
+
+try:
+    es_db = Elasticsearch(ES_URL, api_key=ES_API_KEY)
+    if es_db.ping():
+        print("Elasticsearch connected")
+    else:
+        print("Elasticsearch not reachable, continuing without it")
+        logging.error("Elasticsearch not reachable")
+        es_db = None
+except ConnectionError:
+    logging.error("Elasticsearch not reachable")
+    es_db = None
 
 databases = {
     "metta": lambda: MeTTa_Query_Generator("./Data"),
     "cypher": lambda: CypherQueryGenerator("./cypher_data")
-
     # Add other database instances here
 }
 
@@ -71,8 +80,6 @@ app.config['llm_handler'] = llm
 app.config['annotation_threads'] = {} # holding the stop event for each annotation task
 app.config['annotation_lock'] = threading.Lock()
 app.config['es_db'] = es_db
-
-print(es_db.info())
 
 schema_manager = SchemaManager(schema_config_path='./config/schema_config.yaml',
                                biocypher_config_path='./config/biocypher_config.yaml',
