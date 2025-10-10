@@ -90,6 +90,7 @@ llm = LLMHandler()  # Initialize the LLMHandler
 app.config['llm_handler'] = llm
 app.config['annotation_threads'] = {} # holding the stop event for each annotation task
 app.config['annotation_lock'] = threading.Lock()
+app.config['es_db'] = es_db
 app.config['db_type'] = database_type
 
 schema_manager = SchemaManager(schema_config_path='./config/schema_config.yaml',
