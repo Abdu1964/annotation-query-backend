@@ -6,6 +6,7 @@ from app.services.schema_data import SchemaManager
 from app.services.cypher_generator import CypherQueryGenerator
 from app.services.metta_generator import MeTTa_Query_Generator
 from db import mongo_init
+from logger import init_logging
 from app.services.llm_handler import LLMHandler
 from app.persistence import AnnotationStorageService, UserStorageService
 import os
@@ -16,11 +17,18 @@ from app.error import ThreadStopException
 import threading
 from app.constants import TaskStatus, GRAPH_INFO_PATH, ES_API_KEY, ES_URL
 import json
+from dotenv import load_dotenv
 from elasticsearch import Elasticsearch
 
+load_dotenv()
+
+perf_logger = init_logging()
+
 app = Flask(__name__)
+# Disable werkzeug request logs
+logging.getLogger('werkzeug').disabled = True
 socketio = SocketIO(app, cors_allowed_origins='*',
-                    async_mode='threading', logger=True, engineio_logger=True)
+                    async_mode='threading', logger=False, engineio_logger=False)
 
 app.config['REDIS_URL'] = os.getenv('REDIS_URL')
 
@@ -55,7 +63,6 @@ mongo_init()
 
 try:
     es_db = Elasticsearch(ES_URL, api_key=ES_API_KEY)
-    # optional: ping to check if it’s reachable
     if es_db.ping():
         print("Elasticsearch connected")
     else:
@@ -66,9 +73,12 @@ except ConnectionError:
     logging.error("Elasticsearch not reachable")
     es_db = None
 
+from app.services.mork_generator import MorkQueryGenerator
+
 databases = {
     "metta": lambda: MeTTa_Query_Generator("./Data"),
-    "cypher": lambda: CypherQueryGenerator("./cypher_data")
+    "cypher": lambda: CypherQueryGenerator("./cypher_data"),
+    "mork": lambda: MorkQueryGenerator("./mork_data")
     # Add other database instances here
 }
 
@@ -80,7 +90,7 @@ llm = LLMHandler()  # Initialize the LLMHandler
 app.config['llm_handler'] = llm
 app.config['annotation_threads'] = {} # holding the stop event for each annotation task
 app.config['annotation_lock'] = threading.Lock()
-app.config['es_db'] = es_db
+app.config['db_type'] = database_type
 
 schema_manager = SchemaManager(schema_config_path='./config/schema_config.yaml',
                                biocypher_config_path='./config/biocypher_config.yaml',
