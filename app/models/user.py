@@ -23,7 +23,7 @@ class User(Schema):
                 "required": True,
                 "default": "human"
             },
-            "data_source": any,
+           "data_source": any,
            "created_at": {
                 "type": Types.Date,
                 "required": True,
