@@ -48,6 +48,6 @@ class SharedAnnotation(Schema):
 
     def __str__(self):
         return f"""user_id: {self.user_id}, annotation_id: {self.annotation_id}, token: {self.token},
-            recipient_user_id: {self.recipient_user_id}, share_type: {self.share_type}, role: {self.role}
-        created_at: {self.created_at}, updated_at: {self.updated_at}
-        """
+                recipient_user_id: {self.recipient_user_id}, share_type: {self.share_type}, role: {self.role}
+                created_at: {self.created_at}, updated_at: {self.updated_at}
+            """
