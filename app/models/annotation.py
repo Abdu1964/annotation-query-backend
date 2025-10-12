@@ -22,6 +22,9 @@ class Annotation(Schema):
     status = None
     created_at = None
     updated_at = None
+    data_source = None
+    species = None
+    path_url = None
 
     def __init__(self, **kwargs):
         self.schema = {
@@ -64,6 +67,12 @@ class Annotation(Schema):
                 "required": True
             },
             "path_url": Types.String,
+            "species": {
+                "type": Types.String,
+                "required": True,
+                "default": "human"
+            },
+            "data_source": any,
             "created_at": {
                 "type": Types.Date,
                 "required": True,
@@ -86,5 +95,6 @@ class Annotation(Schema):
         node_count: {self.node_count}, edge_count: {self.edge_count},
         node_count_by_label: {self.node_count_by_label},
         edge_count_by_label: {self.edge_count_by_label},
-        status: {self.status}, created_at: {self.created_at}, updated_at: {self.updated_at}
+        status: {self.status}, species: {self.species}, data_source: {self.data_source}
+        path_url: {self.path_url}, created_at: {self.created_at}, updated_at: {self.updated_at}
         """

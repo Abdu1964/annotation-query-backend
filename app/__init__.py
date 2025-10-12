@@ -68,7 +68,6 @@ except ConnectionError:
 databases = {
     "metta": lambda: MeTTa_Query_Generator("./Data"),
     "cypher": lambda: CypherQueryGenerator("./cypher_data")
-
     # Add other database instances here
 }
 
@@ -82,10 +81,10 @@ app.config['annotation_threads'] = {} # holding the stop event for each annotati
 app.config['annotation_lock'] = threading.Lock()
 app.config['es_db'] = es_db
 
-
 schema_manager = SchemaManager(schema_config_path='./config/schema_config.yaml',
                                biocypher_config_path='./config/biocypher_config.yaml',
-                               config_path='./config/schema')
+                               config_path='./config/schema',
+                               fly_schema_config_path='./config/fly_base_schema/net_act_essential_schema_config.yaml')
 
 #load the json that holds the count for the edges
 graph_info = json.load(open(GRAPH_INFO_PATH))
