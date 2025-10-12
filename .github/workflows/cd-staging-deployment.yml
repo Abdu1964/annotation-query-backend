@@ -148,4 +148,6 @@ jobs:
             -e "ansible_user_id=$(whoami)" \
             -e "ansible_user_dir=$HOME" \
             -e "annotation_environment=staging" \
+            -e "current_uid=$CURRENT_UID" \
+            -e "current_gid=$CURRENT_GID" \
             -v
