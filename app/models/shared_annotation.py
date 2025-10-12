@@ -13,6 +13,7 @@ class SharedAnnotation(Schema):
     updated_at = None
     recipient_user_id = None
     share_type = None
+    role = None
 
     def __init__(self, **kwargs):
         self.schema = {
@@ -30,6 +31,7 @@ class SharedAnnotation(Schema):
             },
             "share_type": {"type": Types.String, "required": True, "default": "public"},
             "recipient_user_id": {"type": Types.String, "required": False},
+            "role": {"type": Types.String, "required": True, "default": "viewer"},
             "created_at": {
                 "type": Types.Date,
                 "required": True,
@@ -46,6 +48,6 @@ class SharedAnnotation(Schema):
 
     def __str__(self):
         return f"""user_id: {self.user_id}, annotation_id: {self.annotation_id}, token: {self.token},
-            recipient_user_id: {self.recipient_user_id}, share_type: {self.share_type}
+            recipient_user_id: {self.recipient_user_id}, share_type: {self.share_type}, role: {self.role}
         created_at: {self.created_at}, updated_at: {self.updated_at}
         """

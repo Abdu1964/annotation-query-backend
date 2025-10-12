@@ -7,13 +7,15 @@ class SharedAnnotationStorageService():
 
     @staticmethod
     def save(data):
-        data = SharedAnnotation(
+        annotation = SharedAnnotation(
             user_id=data["current_user_id"],
             annotation_id=data["annotation_id"],
-            token=data["token"]
+            token=data["token"],
+            share_type=data.get("share_type"),
+            recipient_user_id=data.get("recipient_user_id"),
+            role=data.get("role")
         )
-
-        id = data.save()
+        id = annotation.save()
         return id
 
     @staticmethod
@@ -29,6 +31,7 @@ class SharedAnnotationStorageService():
     @staticmethod
     def update(id, data):
         data = SharedAnnotation.update({"_id": id}, {"$set": data}, many=False)
+        return data
 
     @staticmethod
     def delete(id):
