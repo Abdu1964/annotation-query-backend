@@ -1,4 +1,4 @@
-name: CD - pull Docker image & build with ansible
+name: CD - pull Docker image & build with ansible (staging only)
 
 on:
   repository_dispatch:
@@ -23,21 +23,27 @@ jobs:
           repository: abdu1964/ansible-deploy_v2.0
           path: ansible-deploy_v2.0
 
+      - name: Clean up existing .env file
+        run: |
+          # Remove the .env file if it exists
+          rm -f $HOME/services/annotation-query-backend/.env || true
+
       - name: Create .env file for Annotation Backend
         run: |
           mkdir -p $HOME/services/annotation-query-backend
           cat > $HOME/services/annotation-query-backend/.env << EOF
           # Application
-          APP_PORT=5007
+          APP_PORT=${{secrets.APP_PORT}}
           
           # MongoDB
           MONGO_URI=mongodb://mongodb:27017/annotation
           
           # Redis
-          REDIS_HOST=redis
-          REDIS_PORT=6379
-          REDIS_URL=redis://redis:6379/0
+          REDIS_HOST=${{secrets.REDIS_HOST}}
+          REDIS_PORT=${{secrets.REDIS_PORT}}
+          REDIS_URL=redis://redis:${{secrets.REDIS_PORT}}/0
           REDIS_EXPIRATION=3600
+        
           
           # Neo4j - External servers
           NEO4J_URI=${{ secrets.NEO4J_URI }}
@@ -80,14 +86,19 @@ jobs:
           PARENT_DIR=/tmp/test_data
           
           # Docker
-          DOCKER_HUB_REPO=abdum1964/annotation:staging
-          
+          DOCKER_HUB_REPO=${{ secrets.DOCKER_HUB_REPO }}
+          DOCKER_IMAGE_STAGING=${{ secrets.DOCKER_IMAGE_STAGING }}
+         
           # Ports
-          MONGODB_DOCKER_PORT=27022
-          CADDY_PORT=5558
-          CADDY_PORT_FORWARD=6002
+          MONGODB_DOCKER_PORT=${{ secrets.MONGODB_DOCKER_PORT}}
+          CADDY_PORT=${{ secrets.CADDY_PORT }}
+          CADDY_PORT_FORWARD=${{ secrets.CADDY_PORT_FORWARD }}
           EOF
-
+      - name: Verify .env file content
+        run: |
+          echo "=== Verifying .env file content ==="
+          echo "Full .env content:"
+          cat $HOME/services/annotation-query-backend/.env
           
       - name: Create dynamic inventory
         run: |
