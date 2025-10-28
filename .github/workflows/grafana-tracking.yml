@@ -1,0 +1,292 @@
+name: Grafana - CI/CD Tracking
+
+# This workflow tracks CI/CD events and sends them to Grafana
+# It runs alongside your main CI workflow without modifying it
+
+on:
+  # Track workflow runs (CI/CD completion)
+  workflow_run:
+    workflows: ["CI - Build, Validate and Push Annotation Backend (Staging Only)"]
+    types: [requested, in_progress, completed]
+  
+  # Track PR events
+  pull_request:
+    types: [opened, synchronize, reopened, closed]
+    branches: [staging]
+  
+  # Track push events
+  push:
+    branches: [staging]
+
+env:
+  SERVICE_NAME: annotation-service
+  GRAFANA_URL: ${{ secrets.GRAFANA_URL }}
+
+jobs:
+  track-ci-events:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # ==================================================
+      # TRACK: CI Workflow Started/In Progress
+      # ==================================================
+      - name: 📊 Track CI Workflow Status
+        if: github.event_name == 'workflow_run'
+        run: |
+          WORKFLOW_STATUS="${{ github.event.workflow_run.status }}"
+          WORKFLOW_CONCLUSION="${{ github.event.workflow_run.conclusion }}"
+          
+          # Get PR information if available
+          PR_NUMBER="${{ github.event.workflow_run.pull_requests[0].number }}"
+          if [ -z "$PR_NUMBER" ] || [ "$PR_NUMBER" == "null" ]; then
+            PR_INFO="Direct push to ${{ github.event.workflow_run.head_branch }}"
+            PR_NUMBER="N/A"
+          else
+            PR_INFO="PR #$PR_NUMBER"
+          fi
+          
+          # Determine event based on status
+          if [ "$WORKFLOW_STATUS" == "requested" ]; then
+            STATUS="🔄 CI Started"
+            TAG="ci-started"
+          elif [ "$WORKFLOW_STATUS" == "in_progress" ]; then
+            STATUS="⏳ CI In Progress"
+            TAG="ci-in-progress"
+          elif [ "$WORKFLOW_STATUS" == "completed" ]; then
+            if [ "$WORKFLOW_CONCLUSION" == "success" ]; then
+              STATUS="✅ CI Completed Successfully"
+              TAG="ci-success"
+            elif [ "$WORKFLOW_CONCLUSION" == "failure" ]; then
+              STATUS="❌ CI Failed"
+              TAG="ci-failed"
+            elif [ "$WORKFLOW_CONCLUSION" == "cancelled" ]; then
+              STATUS="🚫 CI Cancelled"
+              TAG="ci-cancelled"
+            else
+              STATUS="⚠️ CI Completed with $WORKFLOW_CONCLUSION"
+              TAG="ci-other"
+            fi
+          else
+            STATUS="ℹ️ CI Status: $WORKFLOW_STATUS"
+            TAG="ci-unknown"
+          fi
+          
+          # Get commit author and SHA
+          COMMIT_AUTHOR="${{ github.event.workflow_run.head_commit.author.name }}"
+          COMMIT_SHA="${{ github.event.workflow_run.head_sha }}"
+          COMMIT_SHORT=$(echo $COMMIT_SHA | cut -c1-7)
+          
+          # Create annotation text
+          ANNOTATION_TEXT="$STATUS
+          $PR_INFO
+          Commit: $COMMIT_SHORT
+          Author: $COMMIT_AUTHOR
+          Branch: ${{ github.event.workflow_run.head_branch }}
+          Workflow: ${{ github.event.workflow_run.name }}"
+          
+          echo "Sending to Grafana: $STATUS"
+          
+          # Send to Grafana
+          curl -X POST ${{ env.GRAFANA_URL }}/api/annotations \
+            -H "Content-Type: application/json" \
+            -H "Authorization: Bearer ${{ secrets.GRAFANA_API_KEY }}" \
+            -d "{
+              \"tags\": [\"$TAG\", \"${{ env.SERVICE_NAME }}\", \"staging\", \"pr-$PR_NUMBER\"],
+              \"text\": \"$ANNOTATION_TEXT\",
+              \"time\": $(date +%s000)
+            }" || echo "Warning: Failed to send Grafana annotation (non-blocking)"
+
+      # ==================================================
+      # TRACK: Pull Request Events
+      # ==================================================
+      - name: 📊 Track PR Events
+        if: github.event_name == 'pull_request'
+        run: |
+          PR_NUMBER="${{ github.event.pull_request.number }}"
+          PR_TITLE="${{ github.event.pull_request.title }}"
+          PR_ACTION="${{ github.event.action }}"
+          PR_AUTHOR="${{ github.event.pull_request.user.login }}"
+          COMMIT_SHA="${{ github.event.pull_request.head.sha }}"
+          COMMIT_SHORT=$(echo $COMMIT_SHA | cut -c1-7)
+          
+          # Determine event type
+          case "$PR_ACTION" in
+            opened)
+              STATUS="📝 PR Opened"
+              TAG="pr-opened"
+              ;;
+            synchronize)
+              STATUS="🔄 PR Updated (New commits)"
+              TAG="pr-updated"
+              ;;
+            reopened)
+              STATUS="🔓 PR Reopened"
+              TAG="pr-reopened"
+              ;;
+            closed)
+              if [ "${{ github.event.pull_request.merged }}" == "true" ]; then
+                STATUS="✅ PR Merged"
+                TAG="pr-merged"
+              else
+                STATUS="🚫 PR Closed (not merged)"
+                TAG="pr-closed"
+              fi
+              ;;
+            *)
+              STATUS="ℹ️ PR $PR_ACTION"
+              TAG="pr-other"
+              ;;
+          esac
+          
+          # Create annotation
+          ANNOTATION_TEXT="$STATUS
+          PR #$PR_NUMBER: $PR_TITLE
+          Author: $PR_AUTHOR
+          Commit: $COMMIT_SHORT
+          Branch: ${{ github.event.pull_request.head.ref }} → ${{ github.event.pull_request.base.ref }}"
+          
+          echo "Sending to Grafana: $STATUS"
+          
+          curl -X POST ${{ env.GRAFANA_URL }}/api/annotations \
+            -H "Content-Type: application/json" \
+            -H "Authorization: Bearer ${{ secrets.GRAFANA_API_KEY }}" \
+            -d "{
+              \"tags\": [\"$TAG\", \"${{ env.SERVICE_NAME }}\", \"staging\", \"pr-$PR_NUMBER\"],
+              \"text\": \"$ANNOTATION_TEXT\",
+              \"time\": $(date +%s000)
+            }" || echo "Warning: Failed to send Grafana annotation (non-blocking)"
+
+      # ==================================================
+      # TRACK: Direct Push to Staging
+      # ==================================================
+      - name: 📊 Track Direct Push
+        if: github.event_name == 'push'
+        run: |
+          COMMIT_SHA="${{ github.sha }}"
+          COMMIT_SHORT=$(echo $COMMIT_SHA | cut -c1-7)
+          COMMIT_MESSAGE="${{ github.event.head_commit.message }}"
+          COMMIT_AUTHOR="${{ github.event.head_commit.author.name }}"
+          
+          STATUS="⚡ Direct Push to Staging"
+          TAG="push-staging"
+          
+          ANNOTATION_TEXT="$STATUS
+          Commit: $COMMIT_SHORT
+          Author: $COMMIT_AUTHOR
+          Message: $COMMIT_MESSAGE
+          Branch: ${{ github.ref_name }}"
+          
+          echo "Sending to Grafana: $STATUS"
+          
+          curl -X POST ${{ env.GRAFANA_URL }}/api/annotations \
+            -H "Content-Type: application/json" \
+            -H "Authorization: Bearer ${{ secrets.GRAFANA_API_KEY }}" \
+            -d "{
+              \"tags\": [\"$TAG\", \"${{ env.SERVICE_NAME }}\", \"staging\"],
+              \"text\": \"$ANNOTATION_TEXT\",
+              \"time\": $(date +%s000)
+            }" || echo "Warning: Failed to send Grafana annotation (non-blocking)"
+
+      # ==================================================
+      # TRACK: Get Detailed CI Job Status (if workflow completed)
+      # ==================================================
+      - name: 📊 Track CI Job Details
+        if: github.event_name == 'workflow_run' && github.event.workflow_run.status == 'completed'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          WORKFLOW_RUN_ID="${{ github.event.workflow_run.id }}"
+          CONCLUSION="${{ github.event.workflow_run.conclusion }}"
+          
+          # Get PR info
+          PR_NUMBER="${{ github.event.workflow_run.pull_requests[0].number }}"
+          if [ -z "$PR_NUMBER" ] || [ "$PR_NUMBER" == "null" ]; then
+            PR_INFO="Direct push"
+            PR_NUMBER="N/A"
+          else
+            PR_INFO="PR #$PR_NUMBER"
+          fi
+          
+          # Try to get job details from GitHub API
+          echo "Fetching job details for workflow run $WORKFLOW_RUN_ID"
+          
+          JOBS_URL="https://api.github.com/repos/${{ github.repository }}/actions/runs/$WORKFLOW_RUN_ID/jobs"
+          
+          # Get job information
+          JOBS_JSON=$(curl -s -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+                           -H "Accept: application/vnd.github+json" \
+                           "$JOBS_URL")
+          
+          # Parse jobs and their conclusions
+          JOB_COUNT=$(echo "$JOBS_JSON" | jq -r '.total_count // 0')
+          
+          if [ "$JOB_COUNT" -gt 0 ]; then
+            echo "Found $JOB_COUNT jobs"
+            
+            # Get first job details (main build job)
+            JOB_NAME=$(echo "$JOBS_JSON" | jq -r '.jobs[0].name // "Unknown"')
+            JOB_STATUS=$(echo "$JOBS_JSON" | jq -r '.jobs[0].conclusion // "unknown"')
+            JOB_DURATION=$(echo "$JOBS_JSON" | jq -r '.jobs[0].run_duration_ms // 0')
+            JOB_DURATION_SEC=$((JOB_DURATION / 1000))
+            
+            # Create detailed status
+            if [ "$CONCLUSION" == "success" ]; then
+              DETAILS="✅ All jobs completed successfully
+              Main Job: $JOB_NAME
+              Duration: ${JOB_DURATION_SEC}s
+              $PR_INFO"
+              TAG="ci-details-success"
+            else
+              DETAILS="❌ CI Failed
+              Failed Job: $JOB_NAME
+              Status: $JOB_STATUS
+              $PR_INFO"
+              TAG="ci-details-failed"
+            fi
+            
+            # Send detailed status
+            curl -X POST ${{ env.GRAFANA_URL }}/api/annotations \
+              -H "Content-Type: application/json" \
+              -H "Authorization: Bearer ${{ secrets.GRAFANA_API_KEY }}" \
+              -d "{
+                \"tags\": [\"$TAG\", \"${{ env.SERVICE_NAME }}\", \"staging\", \"pr-$PR_NUMBER\"],
+                \"text\": \"$DETAILS\",
+                \"time\": $(date +%s000)
+              }" || echo "Warning: Failed to send Grafana annotation (non-blocking)"
+          else
+            echo "No job details available"
+          fi
+
+  # ==================================================
+  # Summary Job: Create CI Event Summary
+  # ==================================================
+  summary:
+    runs-on: ubuntu-latest
+    needs: track-ci-events
+    if: always()
+    
+    steps:
+      - name: 📊 Summary
+        run: |
+          echo "=== Grafana Tracking Summary ==="
+          echo "Event Type: ${{ github.event_name }}"
+          echo "Service: ${{ env.SERVICE_NAME }}"
+          echo "Repository: ${{ github.repository }}"
+          
+          if [ "${{ github.event_name }}" == "workflow_run" ]; then
+            echo "Tracked Workflow: ${{ github.event.workflow_run.name }}"
+            echo "Status: ${{ github.event.workflow_run.status }}"
+            echo "Conclusion: ${{ github.event.workflow_run.conclusion }}"
+          elif [ "${{ github.event_name }}" == "pull_request" ]; then
+            echo "PR #${{ github.event.pull_request.number }}: ${{ github.event.pull_request.title }}"
+            echo "Action: ${{ github.event.action }}"
+          elif [ "${{ github.event_name }}" == "push" ]; then
+            echo "Push to: ${{ github.ref_name }}"
+            echo "Commit: ${{ github.sha }}"
+          fi
+          
+          echo ""
+          echo "✅ Events sent to Grafana successfully"
