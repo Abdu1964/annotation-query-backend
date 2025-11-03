@@ -185,7 +185,6 @@ class MeTTa_Query_Generator(QueryGeneratorInterface):
         
     def run_query(self, query_code, stop_event=True):
         result = self.metta.run(query_code)
-        print(result)
         return result
 
     def parse_and_serialize(self, input, schema, graph_components, result_type):
