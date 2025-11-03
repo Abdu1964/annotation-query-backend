@@ -4,6 +4,7 @@ import logging
 import re
 import zipfile
 from io import BytesIO
+import os
 
 def adjust_file_path(file_path):
     parent_name = file_path.parents[1].name
@@ -28,7 +29,7 @@ def convert_to_csv(response, user_id, file_name):
     file_path = generate_file_path(file_name=file_name, user_id=user_id, extension='xls')
     # create public directory if it doesn't exit.
     os.makedirs(os.path.dirname(file_path), exist_ok=True)
-
+    
     nodes, edges = response
     # Convert nodes and edges to DataFrames
     # Add sheet for each node
@@ -37,7 +38,7 @@ def convert_to_csv(response, user_id, file_name):
         with pd.ExcelWriter(file_path) as writer:
             for key, _ in nodes.items():
                 node = pd.json_normalize(nodes[key])
-                node.columns = [col.replace('data.', '') for col in node.columns]
+                node.columns = [col.replace('data.', '') for col in node.columns] 
                 node.to_excel(writer, sheet_name=f'{key}', index=False)
             for key, _ in edges.items():
                 source = edges[key][0]['data']['source'].split(' ')[0]
@@ -45,6 +46,11 @@ def convert_to_csv(response, user_id, file_name):
                 edge = pd.json_normalize(edges[key])
                 edge.columns = [col.replace('data.', '') for col in edge.columns]
                 edge.to_excel(writer, sheet_name=f'{source}-relationship-{target}', index=False)
+    except Exception as e:
+        print(e)
+        os.remove(file_path)
+        logging.error(f"Error converting to Excel: {e}")
+    return file_path
 
 def convert_to_excel(response):
     output = BytesIO()
@@ -110,7 +116,6 @@ def convert_to_excel(response):
 
         output.seek(0)
         return output
-
     except Exception as e:
         logging.error(f"Error converting to Excel: {e}")
         return None
@@ -170,5 +175,5 @@ def convert_to_tsv(new_graph):
         return output
 
     except Exception as e:
-        print("E: ", e)
+        logging.error(f"Error converting to Excel: {e}")
         return None

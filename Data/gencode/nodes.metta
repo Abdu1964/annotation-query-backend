@@ -5,6 +5,8 @@
 (end (gene ENSG00000175793) 26864456)
 (gene_name (gene ENSG00000175793) SFN)
 (synonyms (gene ENSG00000175793) (YWHAS SFN stratifin 14-3-3_protein_sigma epithelial_cell_marker_protein_1 HGNC:10773))
+(source (gene ENSG00000175793) somevalue)
+(source_url (gene ENSG00000175793) someurl)
 (gene ENSG00000134308)
 (gene_type (gene ENSG00000134308) protein_coding)
 (chr (gene ENSG00000134308) chr2)

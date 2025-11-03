@@ -20,6 +20,8 @@ class Annotation(Schema):
     node_count_by_label = None
     edge_count_by_label = None
     status = None
+    created_at = None
+    updated_at = None
     data_source = None
     species = None
     path_url = None
@@ -94,5 +96,5 @@ class Annotation(Schema):
         node_count_by_label: {self.node_count_by_label},
         edge_count_by_label: {self.edge_count_by_label},
         status: {self.status}, species: {self.species}, data_source: {self.data_source}
-        path_url: {self.path_url},
+        path_url: {self.path_url}, created_at: {self.created_at}, updated_at: {self.updated_at}
         """

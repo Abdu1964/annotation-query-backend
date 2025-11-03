@@ -6,7 +6,7 @@ import os
 import threading
 import datetime
 from app.workers.task_handler import generate_result, start_thread, reset_task, reset_status
-from app.lib import convert_to_excel, generate_file_path, \
+from app.lib import convert_to_csv, generate_file_path, \
     adjust_file_path
 import time
 from app.constants import TaskStatus
@@ -55,7 +55,7 @@ def handle_client_request(query, request, current_user_id, node_types, species, 
     elif annotation_id is None:
         title = llm.generate_title(query[0])
         annotation = {"current_user_id": str(current_user_id),
-                      "query": query[0], "request": request,
+                      "query": str(query[0]), "request": request,
                       "title": title, "node_types": node_types,
                       "status": TaskStatus.PENDING.value,
                       "data_source": data_source, "species": species}
@@ -74,7 +74,7 @@ def handle_client_request(query, request, current_user_id, node_types, species, 
         title = llm.generate_title(query[0])
         del request['annotation_id']
         # save the query and return the annotation
-        annotation = {"query": query[0], "request": request,
+        annotation = {"query": str(query[0]), "request": request,
                       "title": title, "node_types": node_types,
                       'status': TaskStatus.PENDING.value, 'node_count': None,
                       'edge_count': None, 'node_count_by_label': None,
@@ -106,6 +106,7 @@ def process_full_data(current_user_id, annotation_id):
     graph_components = {
             "nodes": requests['nodes'], "predicates": requests['predicates'],
             'properties': True}
+
 
     try:
         file_path = generate_file_path(
