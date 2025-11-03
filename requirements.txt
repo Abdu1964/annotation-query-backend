@@ -21,3 +21,5 @@ flask-redis==0.4.0
 nanoid==2.0.0
 networkx==3.4.2
 elasticsearch==9.0.1
+axiom-py==0.9.1
+sentry-sdk==2.43.0

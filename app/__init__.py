@@ -69,7 +69,7 @@ try:
         print("Elasticsearch not reachable, continuing without it")
         logging.error("Elasticsearch not reachable")
         es_db = None
-except ConnectionError:
+except:
     logging.error("Elasticsearch not reachable")
     es_db = None
 
