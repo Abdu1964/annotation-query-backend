@@ -1,5 +1,5 @@
 from flask import copy_current_request_context, request, jsonify, \
-    Response, send_from_directory, send_file
+    Response, send_from_directory, send_file, after_this_request
 import logging
 import json
 import os
@@ -13,6 +13,7 @@ from flask_socketio import disconnect, join_room, send
 # from app.lib import limit_graph
 from app.lib.auth import token_required, socket_token_required
 from app.lib.email import init_mail, send_email
+from app.lib.utils import convert_to_csv
 from dotenv import load_dotenv
 from distutils.util import strtobool
 import datetime
@@ -25,6 +26,7 @@ from nanoid import generate
 from app.lib.utils import convert_to_tsv
 import traceback
 from app.lib import convert_to_excel
+from pathlib import Path
 
 # Load environmental variables
 load_dotenv()
@@ -63,20 +65,30 @@ def get_graph_info(current_user_id):
 @app.route('/nodes', methods=['GET'])
 @token_required
 def get_nodes_endpoint(current_user_id):
-    nodes = json.dumps(schema_manager.get_nodes(), indent=4)
+    user = UserStorageService.get(current_user_id)
+    species = user.species if user else 'human'
+    nodes = schema_manager.get_nodes()
+    nodes = nodes[species]
+    nodes = json.dumps(nodes, indent=4)
     return Response(nodes, mimetype='application/json')
 
 @app.route('/edges', methods=['GET'])
 @token_required
 def get_edges_endpoint(current_user_id):
-    edges = json.dumps(schema_manager.get_edges(), indent=4)
+    user = UserStorageService.get(current_user_id)
+    species = user.species if user else 'human'
+    edges = schema_manager.get_edges()
+    edges = edges[species]
+    edges = json.dumps(edges, indent=4)
     return Response(edges, mimetype='application/json')
 
 @app.route('/relations/<node_label>', methods=['GET'])
 @token_required
 def get_relations_for_node_endpoint(current_user_id, node_label):
+    user = UserStorageService.get(current_user_id)
+    species = user.species if user else 'human'
     relations = json.dumps(
-        schema_manager.get_relations_for_node(node_label), indent=4)
+        schema_manager.get_relations_for_node(node_label, species), indent=4)
     return Response(relations, mimetype='application/json')
 
 def get_schema_list():
@@ -160,7 +172,7 @@ def schema_by_source(species, query_string):
 
         return response
     except Exception as e:
-        logging.error(f"Error fetching schema: {e}")
+        logging.error(f"Error fetching schema: {e}", exc_info=True)
         return []
 
 def node_exists(response, name):
@@ -186,79 +198,116 @@ def flatten_edges(value):
 @app.route('/preference-option', methods=['GET'])
 @token_required
 def get_preference_option(current_user_id):
-    response = {
-        'species': [specie.value for specie in Species],
-        'sources': {
-            'human': [],
-            'fly': []
-        }
-    }
-
-    schema_list = get_schema_list()
-
-    for source in schema_list:
-        if source['id'] not in ['polyphen-2', 'bgee']:
-            sch = schema_by_source('human', [source['name']])
-            data = {
-                'id': source['id'],
-                'name': source['name'],
-                'url': source['url'],
-                'schema': sch['schema']
+    try:
+        response = {
+            'species': [specie.value for specie in Species ],
+            'sources': {
+                'human': [],
+                'fly': []
             }
-            response['sources']['human'].append(data)
-    schema_fly = schema_by_source('fly', 'all')
-    data = {
-        'id': 'flyall',
-        'name': 'all',
-        'schema': schema_fly
-    }
-    response['sources']['fly'].append(data)
-    return Response(json.dumps(response, indent=4), mimetype='application/json')
+        }
+
+        schema_list = get_schema_list()
+
+        for source in schema_list:
+            if source['id'] not in ['polyphen-2', 'bgee']:
+                sch = schema_by_source('human', [source['name']])
+                data = {
+                    'id': source['id'],
+                    'name': source['name'],
+                    'url': source['url'],
+                    'schema': sch['schema']
+                }
+                response['sources']['human'].append(data)
+        schema_fly = schema_by_source('fly', 'all')
+        data = {
+            'id': 'flyall',
+            'name': 'all',
+            'schema': schema_fly
+        }
+        response['sources']['fly'].append(data)
+        logging.info(json.dumps({
+            "status": "success", "method": "GET",
+            "timestamp": datetime.datetime.now().isoformat(),
+        }))
+        return Response(json.dumps(response, indent=4), mimetype='application/json')
+    except Exception as e:
+        logging.error(json.dumps({"status": "error", "method": "GET",
+                                  "timestamp":  datetime.datetime.now().isoformat(),
+                                  "endpoint": "/preference-option",
+                                  "exception": str(e)}), exc_info=True)
+        error_response = {
+        "status": "error",
+        "message": "An internal server error occurred. Please try again later.",
+        "timestamp": datetime.datetime.now().isoformat()
+        }
+        return Response(json.dumps(error_response, indent=4),
+                    mimetype='application/json',
+                    status=500)
 
 @app.route('/schema', methods=['GET'])
 def get_schema_by_data_source():
-    species = request.args.get('species', 'human')
-    data_source =request.args.getlist('data_source')
+    try:
+        species = request.args.get('species', 'human')
+        data_source =request.args.getlist('data_source')
 
-    if len(data_source) == 1 and data_source[0] == 'flyall':
-        data_source = 'all'
+        if len(data_source) == 1 and data_source[0] == 'flyall':
+            data_source = 'all'
 
-    schemas = schema_by_source(species, data_source)
+        print(data_source)
+        schemas = schema_by_source(species, data_source)
 
-    response = {'nodes': [], 'edges': []}
+        response = {'nodes': [], 'edges': []}
 
-    nodes = schemas['schema']['nodes']
-    edges = schemas['schema']['edges']
+        nodes = schemas['schema']['nodes']
+        edges = schemas['schema']['edges']
 
-    for node in nodes:
-        label = node['data']['name']
+        for node in nodes:
+            label = node['data']['name']
 
-        if label in form_fields:
-            node_data = form_fields[label]
-        else:
-            node_data = []
+            if label in form_fields:
+                node_data = form_fields[label]
+            else:
+                node_data = []
 
-        response['nodes'].append({
-            'id': label,
-            'name': label,
-            'inputs': node_data
-        })
-
-    for edge in edges:
-        source = edge['data']['source']
-        target = edge['data']['target']
-        possible_connections = edge['data']['possible_connection']
-        for possible_connection in possible_connections:
-            response['edges'].append({
-                'id': generate(),
-                'source': source,
-                'target': target,
-                'label': possible_connection
+            response['nodes'].append({
+                'id': label,
+                'name': label,
+                'inputs': node_data
             })
-    return Response(json.dumps(response, indent=4), mimetype='application/json')
+
+        for edge in edges:
+            source = edge['data']['source']
+            target = edge['data']['target']
+            possible_connections = edge['data']['possible_connection']
+            for possible_connection in possible_connections:
+                response['edges'].append({
+                    'id': generate(),
+                    'source': source,
+                    'target': target,
+                    'label': possible_connection
+                })
+        
+        logging.info(json.dumps({"status": "success", "method": "GET",
+                                  "timestamp":  datetime.datetime.now().isoformat(),
+                                  "endpoint": "/schema"}))
+        return Response(json.dumps(response, indent=4), mimetype='application/json')
+    except Exception as e:
+        logging.error(json.dumps({"status": "error", "method": "GET",
+                                  "timestamp":  datetime.datetime.now().isoformat(),
+                                  "endpoint": "/schema",
+                                  "exception": str(e)}), exc_info=True)
+        error_response = {
+        "status": "error",
+        "message": "An internal server error occurred. Please try again later.",
+        "timestamp": datetime.datetime.now().isoformat()
+        }
+    return Response(json.dumps(error_response, indent=4),
+                    mimetype='application/json',
+                    status=500)
 
 @socketio.on('connect')
-@socket_token_required
+# @socket_token_required
 def on_connect(current_user_id,  *args, **kwargs):
     logging.info(f"User connected with ID: {current_user_id}")
     send('User is connected')
@@ -402,7 +451,7 @@ def process_query(current_user_id):
             'properties': properties}
 
         result_graph = db_instance.parse_and_serialize(
-            result, schema_manager.schema,
+            result, schema_manager.full_schema_representation,
             graph_components, result_type='graph')
 
         if source == 'hypothesis':
@@ -416,7 +465,7 @@ def process_query(current_user_id):
         count_result = [total_count[0], count_by_label[0]]
 
         meta_data = db_instance.parse_and_serialize(
-            count_result, schema_manager.schema,
+            count_result, schema_manager.full_schema_representation,
             graph_components, result_type='count')
 
         title = llm.generate_title(result_query)
@@ -427,15 +476,10 @@ def process_query(current_user_id):
         answer = llm.generate_summary(result_graph, requests, question, False, summary)
 
         graph = Graph()
-
-        if len(result_graph['edges']) == 0 and len(result_graph['nodes']) > 1:
+        if len(result_graph['edges']) == 0:
             response = graph.group_node_only(result_graph, requests)
-
         else:
-            if len(result_graph['nodes']) > 1:
-                response = graph.group_graph(result_graph)
-            else:
-                response = result_graph
+            response = graph.group_graph(result_graph)
         response['node_count'] = meta_data['node_count']
         response['edge_count'] = meta_data['edge_count']
         response['node_count_by_label'] = meta_data['node_count_by_label']
@@ -461,10 +505,27 @@ def process_query(current_user_id):
         response = {"annotation_id": str(
             annotation_id), "question": question, "answer": answer}
         formatted_response = json.dumps(response, indent=4)
+        
+        logging.info(json.dumps({"status": "success", "method": "POST",
+                                  "timestamp":  datetime.datetime.now().isoformat(),
+                                  "endpoint": "/query"}))
+    
         return Response(formatted_response, mimetype='application/json')
     except Exception as e:
-        logging.error(f"Error processing query: {e}")
-        return jsonify({"error": (e)}), 500
+        logging.error(json.dumps({"status": "error", "method": "POST",
+                                  "timestamp":  datetime.datetime.now().isoformat(),
+                                  "endpoint": "/query",
+                                  "exception": str(e)}), exc_info=True)
+        error_response = {
+        "status": "error",
+        "message": "An internal server error occurred. Please try again later.",
+        "timestamp": datetime.datetime.now().isoformat()
+        }
+
+        return Response(json.dumps(error_response, indent=4),
+                    mimetype='application/json',
+                    status=500)
+
 
 @app.route('/email-query/<id>', methods=['POST'])
 @token_required
@@ -488,7 +549,7 @@ def process_email_query(current_user_id, id):
 
             send_email(subject, [email], body)
         except Exception as e:
-            logging.error(f"Error processing query: {e}")
+            logging.error(f"Error processing query: {e}", exc_info=True)
 
     sender = threading.Thread(name='main_sender', target=send_full_data)
     sender.start()
@@ -497,41 +558,61 @@ def process_email_query(current_user_id, id):
 @app.route('/history', methods=['GET'])
 @token_required
 def process_user_history(current_user_id):
-    page_number = request.args.get('page_number')
-    if page_number is not None:
-        page_number = int(page_number)
-    else:
-        page_number = 1
-    return_value = []
+    try:
+        page_number = request.args.get('page_number')
+        if page_number is not None:
+            page_number = int(page_number)
+        else:
+            page_number = 1
+        return_value = []
 
-    cursor = UserStorageService.get(current_user_id)
-    cursor = AnnotationStorageService.get_all(str(current_user_id), page_number)
+        cursor = UserStorageService.get(current_user_id)
+        cursor = AnnotationStorageService.get_all(str(current_user_id), page_number)
 
 
-    if cursor is None:
-        return jsonify('No value Found'), 200
+        if cursor is None:
+            return jsonify('No value Found'), 200
 
-    for document in cursor:
-        source = document.get('data_source', 'all')
-        if document.get('species', 'human') == 'fly':
-            source = ['flyall']
-        if document.get('species', 'human') == 'human' and document.get('data_source', 'all') == 'all':
-            source = ['all']
-        return_value.append({
-            'annotation_id': str(document['_id']),
-            "request": document['request'],
-            'title': document['title'],
-            'node_count': document['node_count'],
-            'edge_count': document['edge_count'],
-            'node_types': document['node_types'],
-            'status': document['status'],
-            'species': document.get('species', 'human'),
-            'source': source,
-            "created_at": document['created_at'].isoformat(),
-            "updated_at": document["updated_at"].isoformat()
-        })
-    return Response(json.dumps(return_value, indent=4),
-                    mimetype='application/json')
+        for document in cursor:
+            source = document.get('data_source', 'all')
+            if document.get('species', 'human') == 'fly':
+                source = ['flyall']
+            if document.get('species', 'human') == 'human' and document.get('data_source', 'all') == 'all':
+                source = ['all']
+            return_value.append({
+                'annotation_id': str(document['_id']),
+                "request": document['request'],
+                'title': document['title'],
+                'node_count': document['node_count'],
+                'edge_count': document['edge_count'],
+                'node_types': document['node_types'],
+                'status': document['status'],
+                'species': document.get('species', 'human'),
+                'source': source, 
+                "created_at": document['created_at'].isoformat(),
+                "updated_at": document["updated_at"].isoformat()
+            })
+        
+        logging.info(json.dumps({"status": "success", "method": "GET",
+                          "timestamp":  datetime.datetime.now().isoformat(),
+                          "endpoint": "/history"}))
+                
+        return Response(json.dumps(return_value, indent=4),
+                        mimetype='application/json')
+    except Exception as e:
+        logging.error(json.dumps({"status": "error", "method": "GET",
+                                  "timestamp":  datetime.datetime.now().isoformat(),
+                                  "endpoint": "/history",
+                                  "exception": str(e)}), exc_info=True)
+        error_response = {
+        "status": "error",
+        "message": "An internal server error occurred. Please try again later.",
+        "timestamp": datetime.datetime.now().isoformat()
+        }
+
+        return Response(json.dumps(error_response, indent=4),
+                    mimetype='application/json',
+                    status=500)
 
 @app.route('/annotation/<id>', methods=['GET'])
 @token_required
@@ -641,7 +722,7 @@ def get_by_id(current_user_id, id):
         response_data["annotation_id"] = str(annotation_id)
         response_data["request"] = json_request
         response_data["title"] = title
-
+        
         if species == 'fly':
             source = ['flyall']
         if species == 'human' and source=='all':
@@ -659,23 +740,14 @@ def get_by_id(current_user_id, id):
             response_data["edge_count_by_label"] = edge_count_by_label
         response_data["status"] = status
 
-        graph = Graph()
         cache = redis_client.get(str(annotation_id))
 
         if cache is not None:
             cache = json.loads(cache)
-            graph_data = cache['graph']
-            if graph_data is not None:
-                nx_graph = graph.build_graph_nx(graph_data)
-
-                graph_result = []
-
-                sub_graph = graph.build_subgraph_nx(nx_graph)
-
-                for single_graph in sub_graph:
-                    graph_result.append(graph.convert_to_graph_json(single_graph))
-
-                response_data["graph"] = graph_result
+            graph = cache['graph']
+            if graph is not None:
+                response_data['nodes'] = graph['nodes']
+                response_data['edges'] = graph['edges']
 
             return Response(json.dumps(response_data, indent=4), mimetype='application/json')
 
@@ -686,7 +758,8 @@ def get_by_id(current_user_id, id):
                     with open(file_path, 'r') as file:
                         graph = json.load(file)
 
-                    response_data['graph'] = graph
+                    response_data['nodes'] = graph['nodes']
+                    response_data['edges'] = graph['edges']
                 else:
                     response_data['status'] = TaskStatus.PENDING.value
                     requery(annotation_id, query, json_request)
@@ -697,18 +770,13 @@ def get_by_id(current_user_id, id):
         result = db_instance.run_query(query)
         graph_components = {"properties": properties}
         response_data = db_instance.parse_and_serialize(
-            result, schema_manager.schema,
+            result, schema_manager.full_schema_representation,
             graph_components, result_type='graph')
-
         graph = Graph()
-
-        if (len(response_data['edges']) == 0) and len(response_data['nodes']) > 1:
-            response_data = graph.group_node_only(response_data, json_request)
+        if (len(response_data['edges']) == 0):
+            grouped_graph = graph.group_node_only(response_data, json_request)
         else:
-            if len(response['nodes']) > 1:
-                grouped_graph = graph.group_graph(response_data)
-            else:
-                grouped_graph = response_data
+            grouped_graph = graph.group_graph(response_data)
         response_data['nodes'] = grouped_graph['nodes']
         response_data['edges'] = grouped_graph['edges']
 
@@ -719,27 +787,28 @@ def get_by_id(current_user_id, id):
             }
             formatted_response = json.dumps(response, indent=4)
             return Response(formatted_response, mimetype='application/json')
+        # if limit:
+        # response_data = limit_graph(response_data, limit)
 
-        graph_data = {}
-        graph_data['nodes'] = response_data['nodes']
-        graph_data['edges'] = response_data['edges']
-        nx_graph = graph.build_graph_nx(graph_data)
-
-        graph_result = []
-
-        sub_graph = graph.build_subgraph_nx(nx_graph)
-
-        for single_graph in sub_graph:
-            graph_result.append(graph.convert_to_graph_json(single_graph))
-
-        del response_data['nodes']
-        del response_data['edges']
-        response_data["graph"] = graph_result
+        logging.info(json.dumps({"status": "success", "method": "GET",
+                                  "timestamp":  datetime.datetime.now().isoformat(),
+                                  "endpoint": "/annotation/<id>"}))
         formatted_response = json.dumps(response_data, indent=4)
         return Response(formatted_response, mimetype='application/json')
     except Exception as e:
-        logging.error(f"Error processing query: {e}")
-        return jsonify({"error": str(e)}), 500
+        logging.error(json.dumps({"status": "error", "method": "GET",
+                                  "timestamp":  datetime.datetime.now().isoformat(),
+                                  "endpoint": "/annotation/<id>",
+                                  "exception": str(e)}), exc_info=True)
+        error_response = {
+        "status": "error",
+        "message": "An internal server error occurred. Please try again later.",
+        "timestamp": datetime.datetime.now().isoformat()
+        }
+
+        return Response(json.dumps(error_response, indent=4),
+                    mimetype='application/json',
+                    status=500)
 
 @app.route('/annotation/<id>', methods=['POST'])
 @token_required
@@ -799,7 +868,7 @@ def process_by_id(current_user_id, id):
             result = db_instance.run_query(query)
             graph_components = {"properties": properties}
             response_data = db_instance.parse_and_serialize(
-                result, schema_manager.schema, graph_components, result_type='graph')
+                result, schema_manager.full_schema_representation, graph_components, result_type='graph')
 
         response_data['node_count_by_label'] = node_count_by_label
         response_data['edge_count_by_label'] = edge_count_by_label
@@ -813,11 +882,26 @@ def process_by_id(current_user_id, id):
         response = {"annotation_id": str(
             id), "question": question, "answer": answer}
 
+        logging.info(json.dumps({"status": "success", "method": "POST",
+                                  "timestamp":  datetime.datetime.now().isoformat(),
+                                  "endpoint": "/annotation/<id>"}))
+
         formatted_response = json.dumps(response, indent=4)
         return Response(formatted_response, mimetype='application/json')
     except Exception as e:
-        logging.error(f"Error processing query: {e}")
-        return jsonify({"error": str(e)}), 500
+        logging.error(json.dumps({"status": "error", "method": "POST",
+                                  "timestamp":  datetime.datetime.now().isoformat(),
+                                  "endpoint": "/annotation/<id>",
+                                  "exception": str(e)}), exc_info=True)
+        error_response = {
+        "status": "error",
+        "message": "An internal server error occurred. Please try again later.",
+        "timestamp": datetime.datetime.now().isoformat()
+        }
+
+        return Response(json.dumps(error_response, indent=4),
+                    mimetype='application/json',
+                    status=500)
 
 @app.route('/annotation/<id>/full', methods=['GET'])
 @token_required
@@ -832,12 +916,27 @@ def process_full_annotation(current_user_id, id):
             'link': link
         }
 
+        logging.info(json.dumps({"status": "success", "method": "GET",
+                                  "timestamp":  datetime.datetime.now().isoformat(),
+                                  "endpoint": "/annotation/<id>/full",
+                                  }))
+
         formatted_response = json.dumps(response_data, indent=4)
         return Response(formatted_response, mimetype='application/json')
     except Exception as e:
-        logging.error(f"Error processing query: {e}")
-        return jsonify({"error": str(e)}), 500
+        logging.error(json.dumps({"status": "error", "method": "GET",
+                                  "timestamp":  datetime.datetime.now().isoformat(),
+                                  "endpoint": "/annotation/<id>/full",
+                                  "exception": str(e)}), exc_info=True)
+        error_response = {
+        "status": "error",
+        "message": "An internal server error occurred. Please try again later.",
+        "timestamp": datetime.datetime.now().isoformat()
+        }
 
+        return Response(json.dumps(error_response, indent=4),
+                    mimetype='application/json',
+                    status=500)
 
 @app.route('/public/<file_name>')
 def serve_file(file_name):
@@ -863,15 +962,15 @@ def delete_by_id(current_user_id, id):
             if stop_event is not None:
                 stop_event.set()
 
-        #delete the annotation from the db
+                response_data = {
+                    'message': f'Annotation {id} has been cancelled.'
+                }
+
+        # else delete the annotation from the db
         existing_record = AnnotationStorageService.get_by_id(id)
 
         if existing_record is None:
             return jsonify('No value Found'), 404
-
-        # deleted the stored file
-        graph_file_path = existing_record.path_url
-        os.remove(graph_file_path)
 
         deleted_record = AnnotationStorageService.delete(id)
 
@@ -882,12 +981,29 @@ def delete_by_id(current_user_id, id):
         response_data = {
             'message': 'Annotation deleted successfully'
         }
+        
+        logging.info(json.dumps({"status": "success", "method": "DELETE",
+                                  "timestamp":  datetime.datetime.now().isoformat(),
+                                  "endpoint": "/annotation/<id>",
+                                 }))
 
         formatted_response = json.dumps(response_data, indent=4)
         return Response(formatted_response, mimetype='application/json')
     except Exception as e:
-        logging.error(f"Error deleting annotation: {e}")
-        return jsonify({"error": str(e)}), 500
+        logging.error(json.dumps({"status": "error", "method": "DELETE",
+                                  "timestamp":  datetime.datetime.now().isoformat(),
+                                  "endpoint": "/annotation/<id>",
+                                  "exception": str(e)}), exc_info=True)
+        error_response = {
+        "status": "error",
+        "message": "An internal server error occurred. Please try again later.",
+        "timestamp": datetime.datetime.now().isoformat()
+        }
+
+        return Response(json.dumps(error_response, indent=4),
+                    mimetype='application/json',
+                    status=500)
+
 
 @app.route('/annotation/<id>/title', methods=['PUT'])
 @token_required
@@ -912,11 +1028,27 @@ def update_title(current_user_id, id):
             'title': title,
         }
 
+        logging.info(json.dumps({"status": "success", "method": "PUT",
+                                  "timestamp":  datetime.datetime.now().isoformat(),
+                                  "endpoint": "/annotation/<id>/title",
+                                  "exception": str(e)}), exc_info=True)
+    
         formatted_response = json.dumps(response_data, indent=4)
         return Response(formatted_response, mimetype='application/json')
     except Exception as e:
-        logging.error(f"Error updating title: {e}")
-        return jsonify({"error": str(e)}), 500
+        logging.error(json.dumps({"status": "error", "method": "PUT",
+                                  "timestamp":  datetime.datetime.now().isoformat(),
+                                  "endpoint": "/annotation/<id>/title",
+                                  "exception": str(e)}), exc_info=True)
+        error_response = {
+        "status": "error",
+        "message": "An internal server error occurred. Please try again later.",
+        "timestamp": datetime.datetime.now().isoformat()
+        }
+
+        return Response(json.dumps(error_response, indent=4),
+                    mimetype='application/json',
+                    status=500)
 
 @app.route('/annotation/delete', methods=['POST'])
 @token_required
@@ -950,26 +1082,38 @@ def delete_many(current_user_id):
         return jsonify({"error": "Annotation ids must not be empty"}), 400
 
     try:
-        for annotation_id in annotation_ids:
-            annotation = AnnotationStorageService.get_by_id(annotation_id)
-            os.remove(annotation.path_url)
-
         delete_count = AnnotationStorageService.delete_many_by_id(annotation_ids)
 
         response_data = {
             'message': f'Out of {len(annotation_ids)}, {delete_count} were successfully deleted.'
         }
+        
+        logging.info(json.dumps({"status": "success", "method": "POST",
+                                  "timestamp":  datetime.datetime.now().isoformat(),
+                                  "endpoint": "/annotation/delete"}))
 
         formatted_response = json.dumps(response_data, indent=4)
         return Response(formatted_response, mimetype='application/json')
     except Exception as e:
-        logging.error(f"Error deleting annotations: {e}")
-        return jsonify({"error": str(e)}), 500
+        logging.error(json.dumps({"status": "error", "method": "POST",
+                                  "timestamp":  datetime.datetime.now().isoformat(),
+                                  "endpoint": "/annotation/delete",
+                                  "exception": str(e)}), exc_info=True)
+        error_response = {
+        "status": "error",
+        "message": "An internal server error occurred. Please try again later.",
+        "timestamp": datetime.datetime.now().isoformat()
+        }
+
+        return Response(json.dumps(error_response, indent=4),
+                    mimetype='application/json',
+                    status=500)
 
 @app.route('/save-preference', methods=['POST'])
 @token_required
 def update_settings(current_user_id):
     data = request.get_json()
+
     data_source = data.get('sources', None)
     species = data.get('species', None)
 
@@ -978,7 +1122,7 @@ def update_settings(current_user_id):
 
     if species is None:
         species = 'human'
-
+    
     if species == "fly":
         data_source = 'all'
 
@@ -1024,12 +1168,30 @@ def update_settings(current_user_id):
             'message': 'Data source updated successfully',
             'data_source': data_source
         }
+        
+        logging.info(json.dumps({"status": "success", "method": "POST",
+                                  "timestamp":  datetime.datetime.now().isoformat(),
+                                  "endpoint": "/save-preference"}))
 
         formatted_response = json.dumps(response_data, indent=4)
         return Response(formatted_response, mimetype='application/json')
     except Exception as e:
-        logging.error(f"Error updating data source: {e}")
+        logging.error(json.dumps({"status": "error", "method": "POST",
+                                  "timestamp":  datetime.datetime.now().isoformat(),
+                                  "endpoint": "/save-preference",
+                                  "exception": str(e)}), exc_info=True)
+        error_response = {
+        "status": "error",
+        "message": "An internal server error occurred. Please try again later.",
+        "timestamp": datetime.datetime.now().isoformat()
+        }
+
+        return Response(json.dumps(error_response, indent=4),
+                    mimetype='application/json',
+                    status=500)
+        logging.error(f"Error updating data source: {e}", exc_info=True)
         return jsonify({"error": str(e)}), 500
+
 
 @app.route('/saved-preference', methods=['GET'])
 @token_required
@@ -1042,7 +1204,7 @@ def get_saved_preferences(current_user_id):
         else:
             data_source = ['GWAS']
             species = 'human'
-
+        
         if species == 'fly':
             data_source = ['flyall']
 
@@ -1050,84 +1212,26 @@ def get_saved_preferences(current_user_id):
             'species': species,
             'source': data_source
         }
+        
+        logging.info(json.dumps({"status": "success", "method": "GET",
+                                  "timestamp":  datetime.datetime.now().isoformat(),
+                                  "endpoint": "/saved-preference"}))
 
         return Response(json.dumps(response_data, indent=4), mimetype='application/json')
     except Exception as e:
-        logging.error(f"Error getting saved preferences: {e}")
-        return jsonify({"error": str(e)}), 500
-
-@app.route('/annotation/<id>/download-tsv', methods=['GET'])
-@token_required
-def download_csv(current_user_id, id):
-    cursor = AnnotationStorageService.get_by_id(id)
-
-    if cursor is None:
-        return jsonify('No value Found'), 404
-
-    file_path = cursor.path_url
-
-    try:
-        graph = json.load(open(file_path))
-
-        g = Graph()
-        new_graph = g.break_grouping(graph)
-
-        file_obj = convert_to_tsv(new_graph)
-
-        if file_obj:
-            return send_file(
-                file_obj,
-                mimetype='application/zip',
-                as_attachment=True,
-                download_name='graph_export.zip'
-            )
-        else:
-            return jsonify('Error generating the file'), 500
-
-    except Exception as e:
-        logging.error(f"Error processing query: {e}")
-        return jsonify({"error": str(e)}), 500
-
-@app.route("/search", methods=["POST"])
-@token_required
-def search(current_user_id):
-    data = request.get_json()
-
-    node_type = data.get('node_type', None)
-    search_text = data.get('search_text', None)
-
-    if not node_type or not search_text:
-        return jsonify({"error": "Missing node type or search text"}), 400
-
-    try:
-        node_property, property_value = next(iter(search_text.items()))
-
-        search_payload = {
-            'suggest': {
-                'text-suggest': {
-                    'prefix': property_value,
-                    'completion': {
-                        'field': node_property
-                    }
-                }
-            }
+        logging.error(json.dumps({"status": "error", "method": "GET",
+                                  "timestamp":  datetime.datetime.now().isoformat(),
+                                  "endpoint": "/saved-preference",
+                                  "exception": str(e)}), exc_info=True)
+        error_response = {
+        "status": "error",
+        "message": "An internal server error occurred. Please try again later.",
+        "timestamp": datetime.datetime.now().isoformat()
         }
 
-        es_client = app.config['es_db']
-
-        response = es_client.search(index=node_type, body=search_payload)
-
-        suggested_response = []
-
-        suggestions = response.get('suggest', {}).get('text-suggest', [])[0]
-
-        for suggestion in suggestions.get('options', []):
-            suggested_response.append(suggestion['text'])
-
-        return Response(json.dumps(suggested_response, indent=4), mimetype='application/json')
-    except Exception as e:
-        logging.error(f"Error processing search: {e}")
-        return jsonify({"error": str(e)}), 500
+        return Response(json.dumps(error_response, indent=4),
+                    mimetype='application/json',
+                    status=500)
 
 @app.route("/share", methods=["POST"])
 @token_required
@@ -1258,14 +1362,6 @@ def revoke_shared_annotation(current_user_id, id):
 @app.route("/localized-graph", methods=["GET"])
 @token_required
 def cell_component(current_user_id):
-    """
-    Build a graph of proteins with their locations.
-
-    - Takes an annotation ID and a list of locations from the frontend.
-    - Expands parent–child relationships into direct edges.
-    - Finds which proteins belong to the given locations.
-    - Returns a JSON graph where each protein is mapped to its location(s).
-    """
     # get annotation id and get go term id
     annotation_id = request.args.get('id')
     locations = request.args.get('locations')
@@ -1459,65 +1555,72 @@ def cell_component(current_user_id):
             response["nodes"].append(values)
 
 
-        # graph = Graph()
-        # graph_response = graph.collapse_node_nx_location(response)
+        logging.info(json.dumps({"status": "success", "method": "GET",
+                                  "timestamp":  datetime.datetime.now().isoformat(),
+                                  "endpoint": "/localized-graph"}))
 
         return Response(json.dumps(response, indent=4), mimetype='application/json')
     except Exception as e:
-        logging.error(f"Error processing search: {e}")
-        return jsonify({"error": str(e)}), 500
+        logging.error(json.dumps({"status": "error", "method": "GET",
+                                  "timestamp":  datetime.datetime.now().isoformat(),
+                                  "endpoint": "/localized-graph",
+                                  "exception": str(e)}), exc_info=True)
+        error_response = {
+        "status": "error",
+        "message": "An internal server error occurred. Please try again later.",
+        "timestamp": datetime.datetime.now().isoformat()
+        }
 
-@app.route('/annotation/<id>/download', methods=['GET'])
+        return Response(json.dumps(error_response, indent=4),
+                    mimetype='application/json',
+                    status=500)
+
+@app.route('/annotation/<id>/download-tsv', methods=['GET'])
 @token_required
-def download_annotation(current_user_id, id):
-    # response_data = {'nodes': [], 'edges': []}
-    # get the query string from the request
-    group_id = request.args.get('node_group_id')
-
-    cursor = AnnotationStorageService.get_user_annotation(id, current_user_id)
-
+def download_csv(current_user_id, id):
+    cursor = cursor = storage_service.get_by_id(id)
+    
     if cursor is None:
         return jsonify('No value Found'), 404
 
     file_path = cursor.path_url
+    
     try:
-        graphs = json.load(open(file_path))
-
-        # add this after the subgraph data extraction have been merged
-        response_data = {'nodes': [], 'edges': []}
-        for graph in graphs:
-            response_data['nodes'].extend(graph['nodes'])
-            response_data['edges'].extend(graph['edges'])
-
-        if group_id:
-            nodes = response_data['nodes']
-
-            for node in nodes:
-                if node['data']['id'] == group_id:
-                    response_data = {'nodes': [], 'edges': []}
-                    nodes_data = node['data']['nodes']
-
-                    for node_data in nodes_data:
-                        data = {
-                            'data': {
-                                **node_data
-                            }
-                        }
-
-                        response_data['nodes'].append(data)
-
-        file_obj = convert_to_excel(response_data)
-
+        graph = json.load(open(file_path))
+        
+        g = Graph()
+        new_graph = g.break_grouping(graph)
+        
+        file_obj = convert_to_tsv(new_graph)
+        
         if file_obj:
+            logging.error(json.dumps({"status": "success", "method": "GET",
+                                  "timestamp":  datetime.datetime.now().isoformat(),
+                                  "endpoint": "/annotation/<id>/download-tsv"}))
             return send_file(
                 file_obj,
-                mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                mimetype='application/zip',
                 as_attachment=True,
-                download_name='graph_export.xlsx'
+                download_name='graph_export.zip'
             )
         else:
+            logging.error(json.dumps({"status": "error", "method": "GET",
+                                  "timestamp":  datetime.datetime.now().isoformat(),
+                                  "endpoint": "/annotation/<id>/download-tsv",
+                                  "exception": "Error generating the file"}))
             return jsonify('Error generating the file'), 500
+        
     except Exception as e:
-        logging.error(f"Error processing query: {e}")
-        return jsonify({"error": str(e)}), 500
-  
+        logging.error(json.dumps({"status": "error", "method": "GET",
+                                  "timestamp":  datetime.datetime.now().isoformat(),
+                                  "endpoint": "/annotation/<id>/download-tsv",
+                                  "exception": str(e)}), exc_info=True)
+        error_response = {
+        "status": "error",
+        "message": "An internal server error occurred. Please try again later.",
+        "timestamp": datetime.datetime.now().isoformat()
+        }
+
+        return Response(json.dumps(error_response, indent=4),
+                    mimetype='application/json',
+                    status=500)

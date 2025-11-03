@@ -27,6 +27,29 @@ class SchemaManager:
         self.schema_list = self.get_schema_list()
         self.biocypher_config_path = biocypher_config_path
         self.schmea_representation = self.get_schema_represnetion_per_source(self.schema_list)
+        self.full_schema_representation = self.get_merged_schema_represntation(self.schmea_representation, self.fly_schema_represetnation)
+
+    def get_merged_schema_represntation(self, human_schema_representation, fly_schema_representation):
+        full_schema_representation = {"human": {"nodes": {}, "edges": {}}, "fly": {"nodes": {}, "edges": {}}}
+        
+        for data_source, _ in human_schema_representation.items():
+            for node_type, node_properties in human_schema_representation[data_source]["nodes"].items():
+                if node_type not in full_schema_representation["human"]['nodes']:
+                    full_schema_representation["human"]["nodes"][node_type] = node_properties
+            
+            for edge_type, edge_properties in human_schema_representation[data_source]["edges"].items():
+                if edge_type not in full_schema_representation["human"]['edges']:
+                    full_schema_representation["human"]["edges"][edge_type] = edge_properties
+                
+        for node_type, node_properties in fly_schema_representation["nodes"].items():
+            if node_type not in full_schema_representation["fly"]["nodes"]:
+                full_schema_representation["fly"]["nodes"][node_type] = node_properties
+                
+        for edge_type, edge_properties in fly_schema_representation["edges"].items():
+            if edge_type not in full_schema_representation["fly"]["edges"]:
+                full_schema_representation["fly"]["edges"][edge_type] = edge_properties
+            
+        return full_schema_representation
 
     def merge_schema(self, human_schema, fly_schema):
         merged_schema = {"fly": {}, "human": {}}
