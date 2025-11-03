@@ -5,6 +5,7 @@ from pymongo import MongoClient
 from pymongoose.methods import set_schemas
 from app.models.annotation import Annotation
 from app.models.user import User
+from app.models.shared_annotation import SharedAnnotation
 
 MONGO_URI = os.environ.get("MONGO_URI")
 
@@ -22,6 +23,7 @@ def mongo_init():
         schemas = {
             "annotation": Annotation(empty=True).schema,
             "user": User(empty=True).schema,
+            "shared_annotation": SharedAnnotation(empty=True).schema,
         }
 
         set_schemas(db, schemas)

@@ -4,6 +4,8 @@ import logging
 import json
 import os
 import threading
+import jwt
+from pathlib import Path
 from app import app, schema_manager, db_instance, socketio, redis_client
 from app.lib import validate_request
 from flask_cors import CORS
@@ -17,10 +19,13 @@ from distutils.util import strtobool
 import datetime
 from app.lib import Graph, heuristic_sort
 from app.annotation_controller import handle_client_request, process_full_data, requery
-from app.constants import TaskStatus, Species, form_fields
+from app.constants import TaskStatus, Species, form_fieldsm, ROLES
 from app.workers.task_handler import get_annotation_redis
-from app.persistence import AnnotationStorageService, UserStorageService
+from app.persistence import AnnotationStorageService, UserStorageService, SharedAnnotationStorageService
 from nanoid import generate
+from app.lib.utils import convert_to_tsv
+import traceback
+from app.lib import convert_to_excel
 from pathlib import Path
 
 # Load environmental variables
@@ -363,6 +368,44 @@ def process_query(current_user_id):
         requests = data['requests']
         question = requests.get('question', None)
         answer = None
+        
+        # check if the user has access to modify the query
+        annotation_id = requests.get('annotation_id', None)
+        
+        if annotation_id:
+            # get who created the annoation
+            existing_annotation = AnnotationStorageService.get_by_id(annotation_id)
+            
+            owner_id = existing_annotation.user_id
+            
+            # check if its shared 
+            shared_annotation = SharedAnnotationStorageService.get({
+                'user_id': owner_id,
+                'annotation_id': annotation_id
+            })
+
+            if shared_annotation is None:
+                # if its not shared check if the one requesting an edit and who created the annoation is the same
+                if str(owner_id) != str(current_user_id):
+                    return jsonify(
+                       {"error": "Unautorized"}
+                    ), 401
+            else:
+                recipient_user_id = shared_annotation.recipient_user_id
+                role = shared_annotation.role
+                share_type = shared_annotation.share_type
+
+                if share_type == "public":
+                    if role not in ["editor", "owner"]:
+                        return jsonify({"error": "Unautorized"}), 401
+                elif share_type == "private":
+                    if role not in ["editor", "owner"]:
+                        return jsonify({"error": "Unautorized"}), 401
+                    if recipient_user_id != current_user_id:
+                        return jsonify({"error": "Unautorized"}), 401
+
+                current_user_id = owner_id
+                
         # Validate the request data before processing
         user = UserStorageService.get(current_user_id)
         data_source = user.data_source if user else 'all'
@@ -574,6 +617,47 @@ def process_user_history(current_user_id):
 @app.route('/annotation/<id>', methods=['GET'])
 @token_required
 def get_by_id(current_user_id, id):
+    token = request.args.get('token', None)
+    try:
+        if token:
+            SHARED_TOKEN_SECRET = os.getenv('SHARED_TOKEN_SECRET')
+            data = jwt.decode(token, SHARED_TOKEN_SECRET, algorithms=['HS256'])
+            current_user_id = data['user_id']
+
+            shared_resource = SharedAnnotationStorageService.get({
+                'user_id': current_user_id,
+                'annotation_id': id
+            })
+
+            if shared_resource is None:
+                return jsonify({'error': 'unauthorized'}), 401
+    except Exception as e:
+        return jsonify({'error': 'unauthorized'}), 401
+    
+    existing_annotation = AnnotationStorageService.get_by_id(id)
+    
+    owner_id = existing_annotation.user_id
+    
+    # check if its shared 
+    shared_annotation = SharedAnnotationStorageService.get({
+        'user_id': owner_id,
+        'annotation_id': id
+    })
+    
+    if shared_annotation is None:
+        if str(owner_id) != str(current_user_id):
+            return jsonify({'error': 'unauthorized'}), 401
+    else:
+        share_type = shared_annotation.share_type
+        recipient_user_id = shared_annotation.recipient_user_id
+        
+        if share_type != 'public':
+            if str(recipient_user_id) != str(current_user_id):
+                return jsonify({'error': 'unauthorized'}), 401
+            
+        current_user_id = owner_id
+
+
     response_data = {}
     cursor = AnnotationStorageService.get_user_annotation(id, current_user_id)
 
@@ -732,7 +816,6 @@ def process_by_id(current_user_id, id):
     data = request.get_json()
     if not data or 'requests' not in data:
         return jsonify({"error": "Missing requests data"}), 400
-
 
     if 'question' not in data["requests"]:
         return jsonify({"error": "Missing question data"}), 400
@@ -1150,6 +1233,132 @@ def get_saved_preferences(current_user_id):
                     mimetype='application/json',
                     status=500)
 
+@app.route("/share", methods=["POST"])
+@token_required
+def share_annotation(current_user_id):
+    try:
+        data = request.get_json()
+
+        annotation_id = data.get('annotation_id', None)
+        share_type = data.get('share_type', 'public')   # default is public
+        recipient_user_id = data.get('recipient_user_id')  # only required for private
+        role = data.get('role')
+        
+        if role not in ROLES:
+            return jsonify({"error": "Role should be viewer, owner or editor"})
+            
+
+        if not annotation_id:
+            return jsonify({"error": "Missing annotation ID"}), 400
+
+        annotation = AnnotationStorageService.get_by_id(annotation_id)
+
+        if not annotation:
+            return jsonify({"error": "Annotation not found"}), 404
+
+        # If private, recipient_user_id must be given
+        if share_type == "private" and not recipient_user_id:
+            return jsonify({"error": "Missing recipient user ID for private share"}), 400
+
+        # Check if already shared
+        shared_resource = SharedAnnotationStorageService.get({
+            'user_id': current_user_id,
+            'annotation_id': annotation_id,
+        })
+
+        if shared_resource:
+            new_shared_resouce = SharedAnnotationStorageService.update(shared_resource.id, {
+                'annotation_id': annotation_id,
+                'share_type': share_type,
+                'recipient_user_id': recipient_user_id,
+                'token': shared_resource.token,
+                'role': role
+            })
+            response = {
+                'user_id': current_user_id,
+                'annotation_id': annotation_id,
+                'share_type': share_type,
+                'recipient_user_id': recipient_user_id,
+                'token': shared_resource.token,
+                'role': role
+            }
+
+            return Response(json.dumps(response, indent=4), mimetype='application/json')
+
+        # JWT Secret Key
+        SHARED_TOKEN_SECRET = os.getenv("SHARED_TOKEN_SECRET")
+        
+        if not SHARED_TOKEN_SECRET:
+            raise Exception("SHARED_TOKEN_SECRET is not configured")
+
+        payload = {
+            'user_id': current_user_id,
+            'annotation_id': annotation_id,
+            'share_type': share_type,
+            'recipient_user_id': recipient_user_id
+        }
+
+        # generate a unique sharable token
+        token = jwt.encode(payload, SHARED_TOKEN_SECRET, algorithm="HS256")
+
+        # Save share entry
+        shared_annotation = SharedAnnotationStorageService.save({
+            'current_user_id': current_user_id,
+            'annotation_id': annotation_id,
+            'token': token,
+            'share_type': share_type,
+            'recipient_user_id': recipient_user_id,
+            'role': role
+        })
+
+        if not shared_annotation:
+            return jsonify({"error": "Failed to save shared annotation"}), 500
+
+        response = {
+            'user_id': current_user_id,
+            'annotation_id': annotation_id,
+            'share_type': share_type,
+            'recipient_user_id': recipient_user_id,
+            'token': token,
+            'role': role
+        }
+
+        return Response(json.dumps(response, indent=4), mimetype='application/json')
+    except Exception as e:
+        logging.error(f"Error sharing annotation: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/share/<id>", methods=["DELETE"])
+@token_required
+def revoke_shared_annotation(current_user_id, id):
+    try:
+        # Get the annotation
+        annotation = AnnotationStorageService.get_by_id(id)
+        if annotation is None:
+            return jsonify({'error': 'No annotation found'}), 404
+
+        # Only owner can revoke
+        if annotation.user_id != current_user_id:
+            return jsonify({'error': 'Unauthorized'}), 401
+
+        # Get the shared record
+        shared_resource = SharedAnnotationStorageService.get({
+            'user_id': current_user_id,
+            'annotation_id': id,
+        })
+
+        if shared_resource is None:
+            return jsonify({'error': 'No shared record found'}), 404
+
+        # Delete the shared record
+        SharedAnnotationStorageService.delete(shared_resource.id)
+
+        return jsonify({'message': 'Annotation revoked successfully'}), 200
+
+    except Exception as e:
+        logging.error(f"Error revoking shared annotation: {e}")
+        return jsonify({"error": str(e)}), 500
+ 
 @app.route("/localized-graph", methods=["GET"])
 @token_required
 def cell_component(current_user_id):

@@ -175,3 +175,5 @@ CELL_STRUCTURE = {
             "go_0015935": "Small ribosomal subunit"
     }
 }
+
+ROLES = ['viewer', 'editor', 'owner']
