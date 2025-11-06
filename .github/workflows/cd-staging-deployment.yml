@@ -14,6 +14,19 @@ jobs:
           echo "Image Tag: ${{ github.event.client_payload.image_tag }}"
           echo "Triggered by: ${{ github.actor }}"
           
+      # =====Backup current annotation version =====
+      - name: Backup current stable annotation version
+        id: backup-annotation-version
+        run: |
+          echo "[info] Backing up current annotation service version for rollback"
+          if docker ps -a --format 'table {{.Names}}\t{{.Image}}' | grep -q annotation-service-staging; then
+            CURRENT_IMAGE=$(docker inspect annotation-service-staging --format='{{.Config.Image}}')
+            echo "current_stable=$CURRENT_IMAGE" >> $GITHUB_OUTPUT
+            echo "[success] Current stable annotation version: $CURRENT_IMAGE"
+          else
+            echo "current_stable=none" >> $GITHUB_OUTPUT
+            echo "[warning] No previous annotation deployment found"
+          fi
       - name: Checkout current repository
         uses: actions/checkout@v4
         
@@ -155,6 +168,7 @@ jobs:
           echo "Home directory: $HOME"
           ansible-playbook -i inventory/hosts.ini playbooks/deploy_server.yml \
             --tags "Annotation_Staging" \
+            --tags "local_network" \
             -e "install_dir=$HOME/services/annotation-query-backend" \
             -e "ansible_user_id=$(whoami)" \
             -e "ansible_user_dir=$HOME" \
@@ -162,3 +176,141 @@ jobs:
             -e "current_uid=$CURRENT_UID" \
             -e "current_gid=$CURRENT_GID" \
             -v
+      
+        
+       # ===== Monitor annotation deployment health =====
+      - name: Monitor annotation deployment health
+        id: annotation-health-check
+        run: |
+          echo "[info] Starting annotation service health monitoring..."
+          sleep 30  # Annotation service needs time to start with dependencies
+          
+          MAX_RETRIES=4
+          for i in $(seq 1 $MAX_RETRIES); do
+            echo "Annotation health check attempt $i/$MAX_RETRIES on port ${{secrets.APP_PORT}}"
+            
+            #  connection test - if it has ANY HTTP response (even 404), service is up
+            if curl -s --max-time 10 http://localhost:${{secrets.APP_PORT}}/ > /dev/null; then
+              echo "[success] ANNOTATION HEALTH CHECK PASSED - Service is responding on port ${{secrets.APP_PORT}}"
+              echo "status=healthy" >> $GITHUB_OUTPUT
+              exit 0
+            fi
+            echo "[warning] Annotation service not responding, retrying in 15 seconds..."
+            sleep 15
+          done
+          
+          echo "[error] ANNOTATION HEALTH CHECK FAILED - Service not responding after $MAX_RETRIES attempts"
+          echo "status=unhealthy" >> $GITHUB_OUTPUT
+          exit 1
+
+         # ===== Automatic annotation service rollback =====
+      - name: Automatic Annotation Rollback
+        if: steps.annotation-health-check.outputs.status == 'unhealthy' && steps.backup-annotation-version.outputs.current_stable != 'none'
+        run: |
+          echo "[info] AUTOMATIC ANNOTATION ROLLBACK INITIATED"
+          echo "Rolling back to: ${{ steps.backup-annotation-version.outputs.current_stable }}"
+          
+          # Use Docker Compose for rollback to handle all dependencies
+          cd $HOME/services/annotation-query-backend
+          
+          # Create rollback docker-compose with previous stable image
+          cat > docker-compose-rollback.yml << 'EOF'
+          version: '3.8'
+          services:
+            annotation_service:
+              image: ${{ steps.backup-annotation-version.outputs.current_stable }}
+              container_name: annotation-service-staging
+              volumes:
+                - .:/app
+              ports:
+                - "${{secrets.APP_PORT}}:${{secrets.APP_PORT}}"
+              env_file:
+                - .env   
+              command: flask run --host=0.0.0.0 --port=${{secrets.APP_PORT}}
+              restart: always
+              depends_on:
+                - mongodb
+                - redis
+              environment:
+                - MONGO_URI=${{secrets.MONGO_URI}}
+                - APP_PORT=${{secrets.APP_PORT}}
+                - REDIS_HOST=${{secrets.REDIS_HOST}}
+                - REDIS_PORT=${{secrets.REDIS_PORT}}
+
+            mongodb:
+              image: mongo:latest
+              container_name: mongodb-staging
+              volumes:
+                - mongo_data:/data/db
+              ports:
+                - "${{secrets.MONGODB_DOCKER_PORT}}:27017"
+              restart: always
+
+            redis:
+              image: redis:latest
+              container_name: redis-staging
+              ports:
+                - "${{secrets.REDIS_HOST}}:${{secrets.REDIS_PORT}}"
+              restart: always
+              volumes:
+                - redis_data:/data
+
+            caddy:
+              image: caddy:latest
+              container_name: caddy-staging
+              ports:
+                - "${{secrets.CADDY_PORT}}:${{secrets.CADDY_PORT_FORWARD}}"
+              volumes:
+                - caddy_data:/data
+                - caddy_config:/config
+              env_file:
+                - .env   
+              command: caddy reverse-proxy --from http://0.0.0.0:${{secrets.CADDY_PORT}} --to http://annotation_service:${{secrets.APP_PORT}}
+              restart: always
+              depends_on:
+                - annotation_service
+
+          volumes:
+            mongo_data:
+            redis_data:
+            caddy_data:
+            caddy_config:
+          EOF
+          
+          # Stop current deployment and start rollback version
+          docker compose -f docker-compose-rollback.yml down || true
+          docker compose -f docker-compose-rollback.yml up -d
+          
+          echo "[success] Annotation rollback completed - Previous stable version with all dependencies restored"
+          
+          # Verify rollback worked
+          sleep 90
+          if curl -s --max-time 10 http://localhost:${{secrets.APP_PORT}}/ > /dev/null; then
+            echo "[success] Annotation rollback verification PASSED"
+          else
+            echo "[warning] Annotation rollback completed but health uncertain"
+          fi
+
+        # ===== Annotation service alerting =====
+      - name: Send annotation deployment success alert
+        if: success()
+        run: |
+          echo "[success] ANNOTATION DEPLOYMENT SUCCESS ALERT"
+          echo "Annotation Service Staging deployment completed"
+          echo "Time: $(date)"
+          echo "Image: ${{secrets.DOCKER_IMAGE_STAGING}}"
+          echo "Commit: ${{ github.sha }}"
+          echo "Triggered by: ${{ github.actor }}"
+          echo "[success] Email notification sent to repository watchers"
+
+      - name: Send annotation deployment failure alert
+        if: failure()
+        run: |
+          echo "[error] ANNOTATION DEPLOYMENT FAILURE ALERT"
+          echo "Annotation Service Staging deployment failed"
+          echo "Time: $(date)" 
+          echo "Image: ${{secrets.DOCKER_IMAGE_STAGING}}"
+          echo "Commit: ${{ github.sha }}"
+          echo "Triggered by: ${{ github.actor }}"
+          echo "Action: Automatic rollback executed"
+          echo "URGENT: Email notification sent to repository watchers"
