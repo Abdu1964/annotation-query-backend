@@ -25,17 +25,25 @@ class LLMHandler:
         else:
             raise ValueError("Invalid model type in configuration")
 
-    def generate_title(self, query):
+    def generate_title(self, query, request=None, node_map=None):
         try:
             if self.model is None:
-                return "Untitled"
+                if request is None or node_map is None:
+                    return "Untitled"
+                else:
+                    title = self.generate_title_no_llm(request, node_map)
+                    return title
             prompt = f'''From this query generate approperiate title. Only give the title sentence don't add any prefix.
                          Query: {query}'''
             title = self.model.generate(prompt)
             return title
         except Exception as e:
             logging.error("Error generating title: ", {e})
-            return "Untitled"
+            if request is None or node_map is None:
+                return "Untitled"
+            else:
+                title = self.generate_title_no_llm(request, node_map)
+                return title
 
     def generate_summary(self, graph, request, user_query=None,graph_id=None, summary=None):
         try:
