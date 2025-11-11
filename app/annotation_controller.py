@@ -15,7 +15,7 @@ from app.persistence import AnnotationStorageService
 llm = app.config['llm_handler']
 EXP = os.getenv('REDIS_EXPIRATION', 3600) # expiration time of redis cache
 
-def handle_client_request(query, request, current_user_id, node_types, species, data_source):
+def handle_client_request(query, request, current_user_id, node_types, species, data_source, node_map):
     annotation_id = request.get('annotation_id', None)
     # check if annotation exist
 
@@ -53,7 +53,7 @@ def handle_client_request(query, request, current_user_id, node_types, species, 
             json.dumps({"annotation_id": str(annotation_id)}),
             mimetype='application/json')
     elif annotation_id is None:
-        title = llm.generate_title(query[0])
+        title = llm.generate_title(query[0], request, node_map)
         annotation = {"current_user_id": str(current_user_id),
                       "query": str(query[0]), "request": request,
                       "title": title, "node_types": node_types,
@@ -71,7 +71,7 @@ def handle_client_request(query, request, current_user_id, node_types, species, 
             json.dumps({"annotation_id": str(annotation_id)}),
             mimetype='application/json')
     else:
-        title = llm.generate_title(query[0])
+        title = llm.generate_title(query[0], request, node_map)
         del request['annotation_id']
         # save the query and return the annotation
         annotation = {"query": str(query[0]), "request": request,

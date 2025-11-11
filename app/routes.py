@@ -443,7 +443,7 @@ def process_query(current_user_id):
 
         if source is None:
             return handle_client_request(query, requests,
-                                         current_user_id, node_types, species, data_source)
+                                         current_user_id, node_types, species, data_source, node_map)
         result = db_instance.run_query(result_query)
 
         graph_components = {
@@ -468,7 +468,7 @@ def process_query(current_user_id):
             count_result, schema_manager.full_schema_representation,
             graph_components, result_type='count')
 
-        title = llm.generate_title(result_query)
+        title = llm.generate_title(result_query, request, node_map)
 
         summary = llm.generate_summary(
             result_graph, requests) or 'Graph too big, could not summarize'

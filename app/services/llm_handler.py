@@ -27,6 +27,8 @@ class LLMHandler:
 
     def generate_title(self, query, request=None, node_map=None):
         try:
+            print(request)
+            print(node_map)
             if self.model is None:
                 if request is None or node_map is None:
                     return "Untitled"
@@ -44,6 +46,26 @@ class LLMHandler:
             else:
                 title = self.generate_title_no_llm(request, node_map)
                 return title
+
+    def generate_title_no_llm(self, req, node_map):
+        predicates = req['predicates']
+
+        title = "Explore"
+
+        if len(predicates) == 0:
+            for id, node in node_map.items():
+                title += f" {node['type'].replace('_', ' ').title()} Node, "
+
+            return title.rstrip(", ").rstrip()
+
+        for predicate in predicates:
+            source = node_map[predicate['source']]['type']
+            target = node_map[predicate['target']]['type']
+            rel = predicate['type']
+
+            title += f" {source.replace('_', ' ').title()} {rel.replace('_', ' ').title()} {target.replace('_', ' ').title()}, "
+
+        return title.rstrip(", ").rstrip()
 
     def generate_summary(self, graph, request, user_query=None,graph_id=None, summary=None):
         try:
