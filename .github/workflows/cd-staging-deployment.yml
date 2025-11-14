@@ -33,8 +33,8 @@ jobs:
       - name: Checkout Ansible repository
         uses: actions/checkout@v4
         with:
-          repository: abdu1964/ansible-deploy_v2.0
-          path: ansible-deploy_v2.0
+          repository: rejuve-bio/ansible-deploy
+          path: ansible-deploy
 
       - name: Clean up existing .env file
         run: |
@@ -115,7 +115,7 @@ jobs:
           
       - name: Create dynamic inventory
         run: |
-          cd ansible-deploy_v2.0
+          cd ansible-deploy
           mkdir -p inventory
           CURRENT_USER=$(whoami)
           USER_HOME=$HOME
@@ -127,7 +127,7 @@ jobs:
           
       - name: Create dynamic playbook
         run: |
-          cd ansible-deploy_v2.0
+          cd ansible-deploy
           mkdir -p playbooks
           cat > playbooks/deploy_server.yml <<EOL
           ---
@@ -146,7 +146,7 @@ jobs:
           
       - name: Ansible configuration
         run: |
-          cd ansible-deploy_v2.0
+          cd ansible-deploy
           cat > ansible.cfg <<EOL
           [defaults]
           interpreter_python = /usr/bin/python3
@@ -163,7 +163,7 @@ jobs:
           
       - name: Deploy Annotation Backend to Staging with Ansible
         run: |
-          cd ansible-deploy_v2.0
+          cd ansible-deploy
           echo "Running as user: $(whoami)"
           echo "Home directory: $HOME"
           ansible-playbook -i inventory/hosts.ini playbooks/deploy_server.yml \
