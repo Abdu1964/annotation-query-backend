@@ -475,3 +475,80 @@ class MorkQueryGenerator:
                 node['properties'][node_type] = node["id"]
                 node['id'] = ''
         return request
+
+    def list_query_generator_source_target(
+        self, source, target, target_ids, relationship
+    ):
+        pattern = []
+        template = []
+
+        for target_id in target_ids:
+            target_id = ":".join(target_id.split("_")).upper()
+            go_id = self.generate_id()
+            source_type = source["type"]
+            target_type = target["type"]
+            key = list(source["properties"].keys())[0]
+            value = list(source["properties"].values())[0]
+
+            # Single string per logical unit
+            pattern.append(f"({key} ({source_type} ${go_id}) {value}) ")
+            pattern.append(
+                f"({relationship} ({source_type} ${go_id}) ({target_type} {target_id}))"
+            )
+            template.append(
+                f"(tmp ({relationship} ({source_type} ${go_id}) ({target_type} {target_id})))"
+            )
+            
+        print(pattern)
+
+        return (tuple(pattern), tuple(template), 'query')
+
+    def list_query_generator_both(
+        self, source, target, source_ids, target_ids, relationship
+    ):
+        exec_list = []
+
+        for source_id in source_ids:
+            for target_id in target_ids:
+                source_type = source["type"]
+                target_type = target["type"]
+
+                pattern = f"({relationship} ({source_type} {source_id}) ({target_type} {target_id}))"
+                template = f"(tmp ({relationship} ({source_type} {source_id}) ({target_type} {target_id})))"
+
+                exec_list.append((pattern, template, 'query'))
+
+        return exec_list
+
+    def parse_list_query(self, results):
+        print("List:", results)
+
+        # If empty list → return empty
+        if not results:
+            return {}
+
+        # Detect if it's a double list (list containing a list)
+        # Example: [ [...something...] ]
+        if len(results) == 1 and isinstance(results[0], list):
+            inner = results[0]
+        else:
+            # Single list case: [...something...]
+            inner = results
+
+        # If still empty after normalization → return empty
+        if not inner:
+            return {}
+
+        tuples = metta_seralizer(inner)
+        parsed_result = {}
+
+        for res in tuples:
+            type, value_label, value, key_label, key = res
+
+            if key not in parsed_result:
+                parsed_result[key] = {"node_ids": []}
+
+            parsed_result[key]["node_ids"].append(value)
+
+        return parsed_result
+
