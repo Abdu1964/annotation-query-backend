@@ -521,7 +521,6 @@ class MorkQueryGenerator:
         return exec_list
 
     def parse_list_query(self, results):
-        print("List:", results)
 
         # If empty list → return empty
         if not results:
