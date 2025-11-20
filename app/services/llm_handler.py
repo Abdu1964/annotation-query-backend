@@ -25,17 +25,47 @@ class LLMHandler:
         else:
             raise ValueError("Invalid model type in configuration")
 
-    def generate_title(self, query):
+    def generate_title(self, query, request=None, node_map=None):
         try:
+            print(request)
+            print(node_map)
             if self.model is None:
-                return "Untitled"
+                if request is None or node_map is None:
+                    return "Untitled"
+                else:
+                    title = self.generate_title_no_llm(request, node_map)
+                    return title
             prompt = f'''From this query generate approperiate title. Only give the title sentence don't add any prefix.
                          Query: {query}'''
             title = self.model.generate(prompt)
             return title
         except Exception as e:
             logging.error("Error generating title: ", {e})
-            return "Untitled"
+            if request is None or node_map is None:
+                return "Untitled"
+            else:
+                title = self.generate_title_no_llm(request, node_map)
+                return title
+
+    def generate_title_no_llm(self, req, node_map):
+        predicates = req['predicates']
+
+        title = "Explore"
+
+        if len(predicates) == 0:
+            for id, node in node_map.items():
+                title += f" {node['type'].replace('_', ' ').title()} Node, "
+
+            return title.rstrip(", ").rstrip()
+
+        for predicate in predicates:
+            source = node_map[predicate['source']]['type']
+            target = node_map[predicate['target']]['type']
+            rel = predicate['type']
+
+            title += f" {source.replace('_', ' ').title()} {rel.replace('_', ' ').title()} {target.replace('_', ' ').title()}, "
+
+        return title.rstrip(", ").rstrip()
 
     def generate_summary(self, graph, request, user_query=None,graph_id=None, summary=None):
         try:
