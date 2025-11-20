@@ -324,16 +324,54 @@ class CypherQueryGenerator(QueryGeneratorInterface):
             return f"({var_name}:{node['type']})"
 
     def where_construct(self, node, var_name):
+        """
+        Construct WHERE clauses for a node, supporting genomic interval filters.
+        - Converts start/end to integers using toInteger() because they may be stored as strings.
+        - Supports interval_type: 'within', 'intersects', 'upstream', 'downstream'.
+        - Supports offsets for upstream/downstream: 'upstream_distance', 'downstream_distance'.
+        """
         properties = []
+    
         if node['id']:
             return properties
-        for key, property in node['properties'].items():
-            if key == "start":
-                properties.append(f"{var_name}.{key} >= {property}")
-            elif key == "end":
-                properties.append(f"{var_name}.{key} <= {property}")
+    
+        start = node['properties'].get('start')
+        end = node['properties'].get('end')
+        interval_type = node['properties'].get('interval_type', 'within')
+        upstream_distance = node['properties'].get('upstream_distance', 0)
+        downstream_distance = node['properties'].get('downstream_distance', 0)
+    
+        # Normal properties (NOT start/end/interval fields)
+        for key, value in node['properties'].items():
+            if key in ['start', 'end', 'interval_type', 'upstream_distance', 'downstream_distance']:
+                continue
+            properties.append(f"{var_name}.{key} =~ '(?i){value}'")
+    
+        # Interval logic with start and end
+        if start is not None and end is not None:
+            start_int = f"toInteger({var_name}.start)"
+            end_int = f"toInteger({var_name}.end)"
+    
+            if interval_type == 'within':
+                # Fully contained
+                properties.append(f"{start_int} >= {start} AND {end_int} <= {end}")
+    
+            elif interval_type == 'intersects':
+                # Overlaps any part of interval
+                properties.append(f"{end_int} >= {start} AND {start_int} <= {end}")
+    
+            elif interval_type == 'upstream':
+                # Node ends before region-start - offset
+                properties.append(f"{end_int} <= ({start} - {upstream_distance})")
+    
+            elif interval_type == 'downstream':
+                # Node starts after region-end + offset
+                properties.append(f"{start_int} >= ({end} + {downstream_distance})")
+    
             else:
-                properties.append(f"{var_name}.{key} =~ '(?i){property}'")
+                # Fallback: within
+                properties.append(f"{start_int} >= {start} AND {end_int} <= {end}")
+    
         return properties
 
     def parse_neo4j_results(self, results, graph_components, result_type):

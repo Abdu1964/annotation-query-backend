@@ -48,24 +48,40 @@ class LLMHandler:
                 return title
 
     def generate_title_no_llm(self, req, node_map):
-        predicates = req['predicates']
-
-        title = "Explore"
-
-        if len(predicates) == 0:
-            for id, node in node_map.items():
-                title += f" {node['type'].replace('_', ' ').title()} Node, "
-
-            return title.rstrip(", ").rstrip()
-
-        for predicate in predicates:
-            source = node_map[predicate['source']]['type']
-            target = node_map[predicate['target']]['type']
-            rel = predicate['type']
-
-            title += f" {source.replace('_', ' ').title()} {rel.replace('_', ' ').title()} {target.replace('_', ' ').title()}, "
-
-        return title.rstrip(", ").rstrip()
+        predicates = req.get('predicates', [])
+    
+        def describe_node(node):
+            """Describe node with its properties."""
+            node_type_clean = node['type'].replace('_', ' ').lower()
+            props = node.get('properties', {})
+    
+            if not props:
+                return node_type_clean
+    
+            props_str = ", ".join(
+                f"{k.replace('_',' ')} '{str(v).replace('_',' ')}'" for k,v in props.items()
+            )
+    
+            return f"{node_type_clean} with {props_str}"
+    
+        # Generic verb for linking
+        link_verb = "linked to"
+    
+        if not predicates:
+            parts = [describe_node(node) for node in node_map.values()]
+            return "Explore " + ", ".join(parts)
+    
+        # Build chain with "linked to" + optional relationship label
+        relations = []
+        for p in predicates:
+            source_desc = describe_node(node_map[p['source']])
+            target_desc = describe_node(node_map[p['target']])
+            rel_desc = p['type'].replace('_',' ').lower()  # use the predicate name as relationship
+    
+            # e.g., "linked to protein with relationship gene product"
+            relations.append(f"{source_desc} {link_verb} {target_desc} with relationship {rel_desc}")
+    
+        return "Explore " + ", ".join(relations)
 
     def generate_summary(self, graph, request, user_query=None,graph_id=None, summary=None):
         try:
