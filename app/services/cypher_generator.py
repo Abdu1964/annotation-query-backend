@@ -626,3 +626,58 @@ class CypherQueryGenerator(QueryGeneratorInterface):
             paresed_result[target_ids]['node_ids'] = source_ids
 
         return paresed_result
+
+    def get_total_entity_query(self):
+        # generate query to get total entityt count
+        query = '''
+        MATCH (n)
+        RETURN count(n) as count
+        ''' 
+        return query
+
+    def get_total_connection_query(self):
+        # generate query to get total conenction count
+        query = '''
+        MATCH ()-[r]->()
+        RETURN count(r) as count
+        '''
+
+        return query
+
+    def get_node_count_by_label_query(self): 
+        query = '''
+        CALL apoc.meta.stats() YIELD labels
+        RETURN labels
+        '''     
+
+        return query   
+
+    def get_connection_count_by_label_source_target_query(self):
+        query = '''
+        CALL db.relationshipTypes() YIELD relationshipType AS type
+        CALL apoc.cypher.run(
+          '
+            MATCH (source)-[r:`'+type+'`]->(target)
+            UNWIND labels(source) AS srcLabel
+            UNWIND labels(target) AS trgLabel
+            RETURN srcLabel AS source, trgLabel AS target, count(r) AS count
+          ', {}
+        ) YIELD value
+        RETURN 
+          type,
+          value.source AS source,
+          value.target AS target,
+          value.count AS count
+        ORDER BY type, count DESC;
+        '''     
+
+        return query
+
+    def get_total_connection_count_by_label_query(self):
+        query = '''
+        CALL db.relationshipTypes() YIELD relationshipType as type
+        CALL apoc.cypher.run('MATCH ()-[:`'+type+'`]->() RETURN count(*) as count',{}) YIELD value
+        RETURN type, value.count
+        '''
+
+        return query
