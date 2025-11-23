@@ -132,7 +132,7 @@ def schema_by_source(species, query_string):
                 continue
 
             for _, values in sub_schema['edges'].items():
-                edge_key = values.get('input_label') or values.get('output_label')
+                edge_key = values.get('ouptut_label') or values.get('input_label')
                 edge = sub_schema['edges'][edge_key]
                 edge_data = { 'data': {
                     "possible_connection": [edge.get('output_label') or edge.get('input_label')],

@@ -146,7 +146,7 @@ class SchemaManager:
                         schema_representation[name]= {'nodes': {}, 'edges': {}}
 
                     for key, value in edges.items():
-                        edge_key = value.get('input_label') or value.get('output_label')
+                        edge_key = value.get('output_label') or value.get('input_label')
                         source = value.get('source').replace('_', ' ')
                         target = value.get('target').replace('_', ' ')
                         if source in to_remove_node or target in to_remove_node:
