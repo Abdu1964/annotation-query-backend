@@ -7,6 +7,14 @@ from apscheduler.executors.pool import ThreadPoolExecutor
 import logging
 import datetime
 import threading
+from urllib.parse import urlparse
+from app import app
+
+REDIS_URL = app.config['REDIS_URL']
+parsed = urlparse(REDIS_URL)
+host = parsed.hostname or 'localhost'
+port = parsed.port or 6379
+password = parsed.password
 
 file_lock = threading.Lock()
 db = CypherQueryGenerator('/data')
@@ -141,7 +149,7 @@ def update_json():
 
 def MetaDataUpdateWorker():
     jobstores = {
-        'default': RedisJobStore(),
+        'default': RedisJobStore(host=host, port=port, password=password),
     }
 
     executors = {
