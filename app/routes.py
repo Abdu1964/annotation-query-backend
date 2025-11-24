@@ -119,7 +119,7 @@ def schema_by_source(species, query_string):
                 for ed in response['schema']['edges']:
                     if value['source'] == ed['data']['source'] and value['target'] == ed['data']['target']:
                         is_new = False
-                        ed['data']['possible_connection'].append( value.get('input_label') or value.get('output_label') or 'unknown')
+                        ed['data']['possible_connection'].append( value.get('output_lable') or value.get('input_label') or 'unknown')
                 if is_new:
                     response['schema']['edges'].extend(flatten_edges(value))
             return response
@@ -132,7 +132,7 @@ def schema_by_source(species, query_string):
                 continue
 
             for _, values in sub_schema['edges'].items():
-                edge_key = values.get('ouptut_label') or values.get('input_label')
+                edge_key = values.get('output_label') or values.get('input_label')
                 edge = sub_schema['edges'][edge_key]
                 edge_data = { 'data': {
                     "possible_connection": [edge.get('output_label') or edge.get('input_label')],
@@ -182,7 +182,7 @@ def node_exists(response, name):
 def flatten_edges(value):
     sources = value['source'] if isinstance(value['source'], list) else [value['source']]
     targets = value['target'] if isinstance(value['target'], list) else [value['target']]
-    label = value.get('input_label') or value.get('output_label') or 'unknown'
+    label = value.get('output_label') or value.get('input_label') or 'unknown'
 
     return [
         {'data': {
