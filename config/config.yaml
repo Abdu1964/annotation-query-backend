@@ -1,2 +1,2 @@
 database:
-  type: mork
+  type: cypher
