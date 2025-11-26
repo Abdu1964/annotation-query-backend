@@ -66,6 +66,8 @@ class MorkQueryGenerator:
                 with annotation.work_at("tmp") as tmp:
                     tmp.clear()
 
+            if result.data is None:
+                result.data = ''
             metta_result = self.metta.parse_all(result.data)
             # Success log
             duration = (time.time() - start_time) * 1000  # in ms
