@@ -288,7 +288,7 @@ class Graph:
             merged_id = generate()  # Generate a new unique ID for the merged node
 
             if len(nodes) == 1:
-                name = G.nodes[first_node]["data"]["name"]
+                name = G.nodes[first_node]["name"] if G.nodes[first_node].get("name") else G.nodes[first_node]["id"]
             else:
                 name = f'{len(nodes)} {base_label} nodes'
 
@@ -340,7 +340,7 @@ class Graph:
         return G
 
 
-    def convert_to_graph_json(self, graph):
+    def convert_to_graph_json(self, graph, allow_data=True):
         """
         Convert a networkx graph to a json representation.
         """
