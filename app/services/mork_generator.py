@@ -16,6 +16,7 @@ class MorkQueryGenerator:
     def __init__(self, dataset_path):
         self.server = self.connect()
         self.metta = MeTTa()
+        self.current_id = None
         # self.clear_space()
         # self.load_dataset(dataset_path)
 
@@ -62,10 +63,12 @@ class MorkQueryGenerator:
 
             with self.server.work_at("annotation") as annotation:
                 annotation.transform(pattern, template).block()
-                result = annotation.download("(tmp $x)", "($x)")
-                with annotation.work_at("tmp") as tmp:
+                result = annotation.download(f"({self.current_id} $x)", "($x)")
+                with annotation.work_at(f"{self.current_id}") as tmp:
                     tmp.clear()
 
+            if result.data is None:
+                result.data = ''
             metta_result = self.metta.parse_all(result.data)
             # Success log
             duration = (time.time() - start_time) * 1000  # in ms
@@ -92,6 +95,7 @@ class MorkQueryGenerator:
         template = []
 
         node_representation = ''
+        self.current_id = self.generate_id()
 
         if "predicates" in requests and len(requests["predicates"]) > 0:
             predicates = requests["predicates"]
@@ -119,14 +123,14 @@ class MorkQueryGenerator:
                 if node["id"]:
                     essemble_id = node["id"]
                     pattern.append(f'({node_type} {essemble_id})')
-                    template.append(f'(tmp ({node_type} {essemble_id}))')
+                    template.append(f'({self.current_id} ({node_type} {essemble_id}))')
                 else:
                     if len(node["properties"]) == 0:
                         pattern.append(f'({node_type} ${node_id})')
                     else:
                         pattern.append(self.construct_node_representation(
                             node, node_identifier))
-                    template.append(f'(tmp ({node_type} {node_identifier}))')
+                    template.append(f'({self.current_id} ({node_type} {node_identifier}))')
 
             query = (tuple(pattern), tuple(template), 'query')
             total_count_query = (
@@ -166,7 +170,7 @@ class MorkQueryGenerator:
 
             # Add relationship
             pattern.append(f'({predicate_type} {source} {target})')
-            template.append(f'(tmp ({predicate_type} {source} {target}))')
+            template.append(f'({self.current_id} ({predicate_type} {source} {target}))')
 
         query = (tuple(pattern), tuple(template), 'query')
         total_count_query = (tuple(pattern), tuple(template), 'total_count')
