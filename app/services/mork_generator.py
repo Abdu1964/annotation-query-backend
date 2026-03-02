@@ -4,7 +4,7 @@ import glob
 from pathlib import Path
 from hyperon import MeTTa
 from .metta import metta_seralizer
-from app import app, perf_logger
+from app import perf_logger
 from dotenv import load_dotenv
 import time
 import datetime
@@ -56,35 +56,78 @@ class MorkQueryGenerator:
         return node_representation
 
     def run_query(self, query, stop_event=None, species='human'):
-        with app.config["annotation_lock"]:
+        print("Query:", query, flush=True)
+        if isinstance(query, tuple) and len(query) == 4:
             start_time = time.time()
             timestamp = datetime.datetime.utcnow().isoformat()
-            pattern, template, type = query
+            pattern, template, type, current_id = query
 
+            print("Pattern: ", pattern)
+            print("Template: ", template)
+            print("CURRENT ID: ", current_id)
             with self.server.work_at("annotation") as annotation:
                 annotation.transform(pattern, template).block()
-                result = annotation.download(f"({self.current_id} $x)", "($x)")
-                with annotation.work_at(f"{self.current_id}") as tmp:
+                result = annotation.download(f"({current_id} $x)", "($x)")
+                with annotation.work_at(f"{current_id}") as tmp:
                     tmp.clear()
-
-            if result.data is None:
-                result.data = ''
+            print("********")
+            print(result)
+            print("********")
             metta_result = self.metta.parse_all(result.data)
             # Success log
+            duration = (time.time() - start_time) * 1000 # in ms
+            # perf_logger.info(
+            #     "Query executed",
+            #     extra={
+            #         "query": str(query),
+            #         "timestamp": timestamp,
+            #         "duration_ms": duration,
+            #         "species": species,
+            #         "status": "success"
+            #     }
+            # )
+            return [metta_result]
+        elif isinstance(query, list):
+            queries = query
+            metta_results = []
+            start_time = time.time()
+            timestamp = datetime.datetime.utcnow().isoformat()
+
+            for pattern, template, _ in queries:
+                # Ensure pattern/template are tuples
+                if isinstance(pattern, str):
+                    pattern = (pattern,)
+                if isinstance(template, str):
+                    template = (template,)
+
+                try:
+                    with self.server.work_at("annotation") as annotation:
+                        annotation.transform(pattern, template).block()
+                        result = annotation.download(f"({self.current_id} $x)", "($x)")
+                        with annotation.work_at(f"{self.current_id}") as tmp:
+                            tmp.clear()
+                    metta_result = self.metta.parse_all(result.data)
+                    metta_results.extend(metta_result)
+                except Exception as e:
+                    print("Query failed:", pattern, template)
+                    print(e)
+
             duration = (time.time() - start_time) * 1000  # in ms
 
-            perf_logger.info(
-                "Query executed",
-                extra={
-                    "query": str(query),
-                    "timestamp": timestamp,
-                    "duration_ms": duration,
-                    "species": species,
-                    "status": "success"
-                }
-            )
+            # perf_logger.info(
+            #     "Query executed",
+            #     extra={
+            #         "query": str(query),
+            #         "timestamp": timestamp,
+            #         "duration_ms": duration,
+            #         "species": species,
+            #         "status": "success"
+            #     }
+            # )
 
-            return [metta_result]
+            return metta_results
+        else:
+            raise ValueError("query must be a tuple or a list of tuples")
 
     def query_Generator(self, requests, node_map, limit=None, node_only=False):
         # this will do only transfomration
@@ -132,11 +175,11 @@ class MorkQueryGenerator:
                             node, node_identifier))
                     template.append(f'({self.current_id} ({node_type} {node_identifier}))')
 
-            query = (tuple(pattern), tuple(template), 'query')
+            query = (tuple(pattern), tuple(template), 'query', self.current_id)
             total_count_query = (
-                tuple(pattern), tuple(template), 'total_count')
+                tuple(pattern), tuple(template), 'total_count', self.current_id)
             label_count_query = (
-                tuple(pattern), tuple(template), 'label_count')
+                tuple(pattern), tuple(template), 'label_count', self.current_id)
 
             return [query, total_count_query, label_count_query]
         for predicate in predicates:
@@ -172,9 +215,9 @@ class MorkQueryGenerator:
             pattern.append(f'({predicate_type} {source} {target})')
             template.append(f'({self.current_id} ({predicate_type} {source} {target}))')
 
-        query = (tuple(pattern), tuple(template), 'query')
-        total_count_query = (tuple(pattern), tuple(template), 'total_count')
-        label_count_query = (tuple(pattern), tuple(template), 'label_count')
+        query = (tuple(pattern), tuple(template), 'query', self.current_id)
+        total_count_query = (tuple(pattern), tuple(template), 'total_count', self.current_id)
+        label_count_query = (tuple(pattern), tuple(template), 'label_count', self.current_id)
         return [query, total_count_query, label_count_query]
 
     def prepare_query_input(self, inputs, schema):
@@ -211,6 +254,8 @@ class MorkQueryGenerator:
         nodes = set()
         to_be_removed = ['synonyms', 'accessions']
 
+        self.current_id = self.generate_id()
+
         for result in results:
             source = result['source']
             source_node_type = result['source'].split(' ')[0]
@@ -236,13 +281,12 @@ class MorkQueryGenerator:
                     nodes.add(target)
 
                 predicate = result['predicate']
-                print(schema[species]['edges'][predicate])
                 for property in schema[species]['edges'][predicate]:
                     random = self.generate_id()
                     pattern.append(f'({property} ({predicate} ({source}) ({target})) ${random})')
-                    template.append(f'(tmp (edge {property} ({predicate} ({source}) ({target})) ${random}))')
+                    template.append(f'({self.current_id} (edge {property} ({predicate} ({source}) ({target})) ${random}))')
 
-        query = (tuple(pattern), tuple(template), 'query')
+        query = (tuple(pattern), tuple(template), 'query', self.current_id)
         return query
 
     def parse_and_serialize(self, input, schema, graph_components, result_type):
@@ -500,10 +544,8 @@ class MorkQueryGenerator:
                 f"({relationship} ({source_type} ${go_id}) ({target_type} {target_id}))"
             )
             template.append(
-                f"(tmp ({relationship} ({source_type} ${go_id}) ({target_type} {target_id})))"
+                f"({self.current_id} ({relationship} ({source_type} ${go_id}) ({target_type} {target_id})))"
             )
-            
-        print(pattern)
 
         return (tuple(pattern), tuple(template), 'query')
 
@@ -511,17 +553,15 @@ class MorkQueryGenerator:
         self, source, target, source_ids, target_ids, relationship
     ):
         exec_list = []
-
         for source_id in source_ids:
             for target_id in target_ids:
                 source_type = source["type"]
                 target_type = target["type"]
 
                 pattern = f"({relationship} ({source_type} {source_id}) ({target_type} {target_id}))"
-                template = f"(tmp ({relationship} ({source_type} {source_id}) ({target_type} {target_id})))"
+                template = f"({self.current_id} ({relationship} ({source_type} {source_id}) ({target_type} {target_id})))"
 
                 exec_list.append((pattern, template, 'query'))
-
         return exec_list
 
     def parse_list_query(self, results):

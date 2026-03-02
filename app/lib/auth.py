@@ -1,5 +1,4 @@
 from flask import request, jsonify
-from flask_socketio import disconnect
 import jwt
 from functools import wraps
 from dotenv import load_dotenv

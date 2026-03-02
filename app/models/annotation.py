@@ -73,6 +73,7 @@ class Annotation(Schema):
                 "default": "human"
             },
             "data_source": any,
+            "files": any,
             "created_at": {
                 "type": Types.Date,
                 "required": True,

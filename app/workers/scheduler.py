@@ -8,9 +8,9 @@ import logging
 import datetime
 import threading
 from urllib.parse import urlparse
-from app import app
+from app.core.config import settings
 
-REDIS_URL = app.config['REDIS_URL']
+REDIS_URL = settings.REDIS_URL
 parsed = urlparse(REDIS_URL)
 host = parsed.hostname or 'localhost'
 port = parsed.port or 6379

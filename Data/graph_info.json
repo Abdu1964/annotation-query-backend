@@ -3,6 +3,7 @@
     "edge_count": 790032046,
     "dataset_count": 29,
     "data_size": "27 GB",
+    "last_updated_at": "2025-12-17",
     "top_entities": [
         {
             "count": 37302978,
@@ -83,20 +84,36 @@
     ],
     "top_connections": [
         {
-            "count": 24314416,
-            "name": "associated_with"
+            "count": 23396247,
+            "name": "closest_gene"
         },
         {
             "count": 723833,
             "name": "subclass_of"
         },
         {
-            "count": 43711,
-            "name": "belongs_to"
+            "count": 6398788,
+            "name": "regulates"
         },
         {
-            "count": 10489065,
-            "name": "binds_to"
+            "count": 24314416,
+            "name": "associated_with"
+        },
+        {
+            "count": 256816650,
+            "name": "coexpressed_with"
+        },
+        {
+            "count": 340530584,
+            "name": "expressed_in"
+        },
+        {
+            "count": 13331452,
+            "name": "interacts_with"
+        },
+        {
+            "count": 35856051,
+            "name": "activity_by_contact"
         },
         {
             "count": 45652,
@@ -105,46 +122,6 @@
         {
             "count": 45652,
             "name": "translation_of"
-        },
-        {
-            "count": 13331452,
-            "name": "interacts_with"
-        },
-        {
-            "count": 18931,
-            "name": "in_tad_region"
-        },
-        {
-            "count": 6398788,
-            "name": "regulates"
-        },
-        {
-            "count": 23396247,
-            "name": "closest_gene"
-        },
-        {
-            "count": 1300,
-            "name": "capable_of"
-        },
-        {
-            "count": 4086,
-            "name": "part_of"
-        },
-        {
-            "count": 256816650,
-            "name": "coexpressed_with"
-        },
-        {
-            "count": 634970,
-            "name": "go_gene_product"
-        },
-        {
-            "count": 340530584,
-            "name": "expressed_in"
-        },
-        {
-            "count": 327932,
-            "name": "tfbs_snp"
         },
         {
             "count": 2691,
@@ -159,32 +136,32 @@
             "name": "parent_pathway_of"
         },
         {
-            "count": 63690968,
-            "name": "eqtl_association"
+            "count": 1300,
+            "name": "capable_of"
         },
         {
-            "count": 181328,
-            "name": "downstream_of"
+            "count": 4086,
+            "name": "part_of"
         },
         {
-            "count": 332450,
-            "name": "located_in"
+            "count": 43711,
+            "name": "belongs_to"
         },
         {
-            "count": 181408,
-            "name": "upstream_of"
+            "count": 327932,
+            "name": "tfbs_snp"
         },
         {
-            "count": 252835,
-            "name": "transcribed_from"
+            "count": 10489065,
+            "name": "binds_to"
         },
         {
-            "count": 252835,
-            "name": "transcribed_to"
+            "count": 634970,
+            "name": "go_gene_product"
         },
         {
-            "count": 1649476,
-            "name": "includes"
+            "count": 18931,
+            "name": "in_tad_region"
         },
         {
             "count": 63615,
@@ -199,8 +176,32 @@
             "name": "chromatin_state"
         },
         {
-            "count": 35856051,
-            "name": "activity_by_contact"
+            "count": 1649476,
+            "name": "includes"
+        },
+        {
+            "count": 252835,
+            "name": "transcribed_from"
+        },
+        {
+            "count": 252835,
+            "name": "transcribed_to"
+        },
+        {
+            "count": 332450,
+            "name": "located_in"
+        },
+        {
+            "count": 181408,
+            "name": "upstream_of"
+        },
+        {
+            "count": 181328,
+            "name": "downstream_of"
+        },
+        {
+            "count": 63690968,
+            "name": "eqtl_association"
         }
     ],
     "frequent_relationships": [
