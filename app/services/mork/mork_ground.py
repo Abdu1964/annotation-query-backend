@@ -1,3 +1,15 @@
+def _edge_label_from_tuple(match):
+    if not match:
+        return 'unknown'
+
+    if len(match) >= 7:
+        property_key = match[0]
+        inner_predicate = match[1] if len(match) > 1 else None
+        if isinstance(property_key, str) and property_key.endswith('_id') and inner_predicate:
+            return inner_predicate
+
+    return match[0]
+
 def get_total_counts(graph_data):
     """
     Calculate the total number of nodes and edges.
@@ -25,9 +37,46 @@ def get_count_by_label(graph_data):
     """
     # Count nodes by label
     node_count_by_label = {}
-    for node in graph_data.get('nodes', []):
-        label = node['data'].get('type', 'unknown')
-        node_count_by_label[label] = node_count_by_label.get(label, 0) + 1
+    edge_count_by_label = {}
+
+    if isinstance(graph_data, list):
+        has_dict_items = any(isinstance(item, dict) for item in graph_data)
+
+        if has_dict_items:
+            for item in graph_data:
+                if not isinstance(item, dict):
+                    continue
+                data = item.get('data', {}) if isinstance(item.get('data', {}), dict) else {}
+                is_edge = False
+                if 'predicate' in item or ('source' in item and 'target' in item):
+                    is_edge = True
+                if 'label' in data or ('source' in data and 'target' in data):
+                    is_edge = True
+                if is_edge:
+                    label = data.get('label') or item.get('predicate') or 'unknown'
+                    edge_count_by_label[label] = edge_count_by_label.get(label, 0) + 1
+                else:
+                    label = data.get('type', 'unknown')
+                    node_count_by_label[label] = node_count_by_label.get(label, 0) + 1
+        else:
+            try:
+                from app.services.metta.metta_seralizer import metta_seralizer
+                tuples = metta_seralizer(graph_data)
+            except Exception:
+                tuples = []
+
+            for match in tuples:
+                if len(match) >= 5:
+                    label = _edge_label_from_tuple(match)
+                    edge_count_by_label[label] = edge_count_by_label.get(label, 0) + 1
+                elif len(match) >= 2:
+                    label = match[0]
+                    node_count_by_label[label] = node_count_by_label.get(label, 0) + 1
+    else:
+        nodes = graph_data.get('nodes', []) if isinstance(graph_data, dict) else []
+        for node in nodes:
+            label = node['data'].get('type', 'unknown')
+            node_count_by_label[label] = node_count_by_label.get(label, 0) + 1
 
     # Convert node counts to the desired format
     node_count_by_label_list = [
