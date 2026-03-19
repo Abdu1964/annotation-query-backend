@@ -357,11 +357,9 @@ class Graph:
         # build the nodes
         for node in graph.nodes():
             if allow_data:
-                data = {
-                    "data": graph.nodes[node]  # Get the node's attributes here
-                }
+                data = {"data": graph.nodes[node]}
             else:
-                data = graph.nodes[nodes]
+                data = graph.nodes[node]
             graph_json['nodes'].append(data)
 
         # build the edges
@@ -371,7 +369,7 @@ class Graph:
                     "data": {
                         "source": u,
                         "target": v,
-                        "id": data['id'], # Any edge attributes
+                        "id": data['id'],
                         "label": data['label'],
                         "edge_id": data['edge_id']
                     }

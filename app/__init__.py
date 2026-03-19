@@ -9,6 +9,7 @@ from logger import init_logging
 from app.persistence import AnnotationStorageService, UserStorageService
 import os
 import logging
+import importlib
 import yaml
 import redis
 from app.error import ThreadStopException, TaskCancelledException
@@ -27,7 +28,6 @@ logger = logging.getLogger(__name__)
 perf_logger = init_logging()
 
 app = Flask(__name__)
-# Disable werkzeug request logs
 logging.getLogger('werkzeug').disabled = True
 socketio = SocketIO(app, cors_allowed_origins='*',
                     async_mode='threading', logger=False, engineio_logger=False)
@@ -78,6 +78,18 @@ try:
 except:
     logger.error("Elasticsearch not reachable")
     es_db = None
+else:
+    try:
+        es_db = Elasticsearch(ES_URL, api_key=ES_API_KEY, max_retries=0, request_timeout=2)
+        if es_db.ping():
+            print("Elasticsearch connected")
+        else:
+            print("Elasticsearch not reachable, continuing without it")
+            logging.error("Elasticsearch not reachable")
+            es_db = None
+    except (ConnectionError, ValueError) as exc:
+        logging.error("Elasticsearch not reachable: %s", exc)
+        es_db = None
 
 schema_manager = SchemaManager(schema_config_path='./config/schema_config.yaml',
                                biocypher_config_path='./config/biocypher_config.yaml',
@@ -86,11 +98,26 @@ schema_manager = SchemaManager(schema_config_path='./config/schema_config.yaml',
 
 
 from app.services.mork_generator import MorkQueryGenerator
+mork_data_dir = os.environ.get("MORK_DATA_DIR")
+if not mork_data_dir:
+    logging.error("MORK_DATA_DIR is not set.")
+    raise RuntimeError("MORK_DATA_DIR is not set.")
+
+def _load_mork_generator():
+    module = importlib.import_module("app.services.mork_generator")
+    return module.MorkQueryGenerator("./mork_data")
+
+def _load_mork_cli_generator():
+    module = importlib.import_module("app.services.mork_cli_generator")
+    return module.MorkCLIQueryGenerator(mork_data_dir)
 
 databases = {
     "metta": lambda: MeTTa_Query_Generator("./Data"),
     "cypher": lambda: CypherQueryGenerator("./cypher_data"),
     "mork": lambda: MorkQueryGenerator("./mork_data")
+    "mork": _load_mork_generator,
+    "mork_cli": _load_mork_cli_generator
+    # Add other database instances here
 }
 
 database_type = config['database']['type']

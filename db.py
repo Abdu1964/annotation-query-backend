@@ -5,17 +5,23 @@ from pymongoose.methods import set_schemas
 from app.models.annotation import Annotation
 from app.models.user import User
 from app.models.shared_annotation import SharedAnnotation
+from dotenv import load_dotenv
 
-MONGO_URI = os.environ.get("MONGO_URI")
-
-_client = None
-_db = None
+load_dotenv()
+mongo_db = None
 
 def mongo_init():
-    global _client, _db
+    global mongo_db
+    
+    uri = os.environ.get("MONGO_URI")
+    if not uri:
+        logging.error("MONGO_URI is not set.")
+        raise RuntimeError("MONGO_URI is not set.")
 
-    if _client is not None:
-        return _db  # already initialized in this process
+    client = MongoClient(uri)
+    db = client.get_database()
+    try:
+        # Define the shcemas
 
     _client = MongoClient(
         MONGO_URI,

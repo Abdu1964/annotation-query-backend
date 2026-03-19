@@ -314,5 +314,5 @@ class LLMHandler:
             summary = summarizer.summary(graph, request, user_query, graph_id, summary)
             return summary
         except Exception as e:
-            logging.error("Error generating summary: ", e)
+            logging.error(f"Error generating summary: {e}")
             return "No summary available"

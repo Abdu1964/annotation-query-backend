@@ -29,9 +29,14 @@ def init_logging():
     )
 
     # --- Axiom ---
-    client = axiom_py.Client()
-    dataset_name = os.getenv("AXIOM_DATASET", "application-logs")  # configurable
-    axiom_handler = AxiomHandler(client, dataset_name)
+    axiom_token = os.getenv("AXIOM_TOKEN")
+    client = None
+    axiom_handler = None
+    perf_handler = None
+    if axiom_token:
+        client = axiom_py.Client()
+        dataset_name = os.getenv("AXIOM_DATASET", "application-logs")  # configurable
+        axiom_handler = AxiomHandler(client, dataset_name)
 
     # --- File Handler for Application Logs ---
     app_file_handler = RotatingFileHandler(
@@ -60,7 +65,8 @@ def init_logging():
     
     # --- Performance Logs ---
     PERF_LOGS_DATASET = os.getenv("AXIOM_PERFORMANCE_LOGS", "performance-metrics")
-    perf_handler = AxiomHandler(client, PERF_LOGS_DATASET)
+    if client:
+        perf_handler = AxiomHandler(client, PERF_LOGS_DATASET)
     
     # --- File Handler for Performance Logs ---
     perf_file_handler = RotatingFileHandler(

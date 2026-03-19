@@ -15,7 +15,6 @@ from app.lib.auth import token_required, socket_token_required
 from app.lib.email import init_mail, send_email
 from app.lib.utils import convert_to_csv
 from dotenv import load_dotenv
-from distutils.util import strtobool
 import datetime
 from app.lib import Graph, heuristic_sort
 from app.annotation_controller import handle_client_request, process_full_data, requery
@@ -38,6 +37,16 @@ logging.getLogger('pymongo').setLevel(logging.CRITICAL)
 
 # set redis logging
 logging.getLogger('flask_redis').setLevel(logging.CRITICAL)
+
+#distutils.util.strtobool is deprecated
+def strtobool(val):
+    val = str(val).lower()
+    if val in ('y', 'yes', 't', 'true', 'on', '1'):
+        return 1
+    elif val in ('n', 'no', 'f', 'false', 'off', '0'):
+        return 0
+    else:
+        raise ValueError(f"invalid truth value {val!r}")
 
 # Flask-Mail configuration
 app.config['MAIL_SERVER'] = os.getenv('MAIL_SERVER')
