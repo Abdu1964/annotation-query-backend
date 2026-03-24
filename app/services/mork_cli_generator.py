@@ -4,9 +4,7 @@ import time
 from pathlib import Path
 from app.services.mork_generator import MorkQueryGenerator
 from hyperon import MeTTa
-from logger import init_logging
-
-perf_logger = init_logging()
+from app import perf_logger
 
 class MorkCLIQueryGenerator(MorkQueryGenerator):
     def __init__(self, dataset_path):
@@ -35,6 +33,15 @@ class MorkCLIQueryGenerator(MorkQueryGenerator):
             target_space = "annotation"
             act_file = self.dataset_path / f"{target_space}.act"
             shm_act = Path("/dev/shm") / f"{target_space}.act"
+
+            if not act_file.exists():
+                message = (
+                    f"Missing ACT file: {act_file}. "
+                    "Run 'python scripts/build_act.py' to generate it."
+                )
+                app.logger.error(message)
+                print(message, flush=True)
+                return [[]]
             
             if not shm_act.exists() or (act_file.stat().st_mtime > shm_act.stat().st_mtime):
                 try:

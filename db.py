@@ -18,18 +18,19 @@ def mongo_init():
         logging.error("MONGO_URI is not set.")
         raise RuntimeError("MONGO_URI is not set.")
 
+    db_name = os.environ.get("MONGO_DB_NAME", "annotation")
     client = MongoClient(uri)
-    db = client.get_database()
+    db = client[db_name]
     try:
         # Define the shcemas
 
     _client = MongoClient(
-        MONGO_URI,
+        uri,
         maxPoolSize=20,
         connectTimeoutMS=5000,
     )
 
-    _db = _client.test
+    _db = _client[db_name]
 
     schemas = {
         "annotation": Annotation(empty=True).schema,

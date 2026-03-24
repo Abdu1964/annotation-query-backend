@@ -87,9 +87,11 @@ def build_act(data_dir, output_act=None):
         str(merged_metta),
         str(output_act)
     ]
-    
+    env = os.environ.copy()
+    env["MORK_DATA_DIR"] = str(data_path)
+
     try:
-        subprocess.run(convert_cmd, capture_output=True, text=True, check=True)
+        subprocess.run(convert_cmd, capture_output=True, text=True, check=True, env=env)
         print("Conversion successful.")
     except subprocess.CalledProcessError as e:
         print(f"Error during conversion: {e.stderr}")

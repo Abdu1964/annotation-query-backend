@@ -1,6 +1,7 @@
 from .mork import MORK, ManagedMORK, get_total_counts, get_count_by_label
 import os
 import glob
+import json
 from pathlib import Path
 from hyperon import MeTTa
 from .metta import metta_seralizer
@@ -33,8 +34,7 @@ class MorkQueryGenerator:
             raise ValueError(f"Dataset path '{path}' does not exist.")
         paths = glob.glob(os.path.join(path, "**/*.metta"), recursive=True)
         if not paths:
-            raise ValueError(
-                f"No .metta files found in dataset path '{path}'.")
+            raise ValueError(f"No .metta files found in dataset path '{path}'.")
         with self.server.work_at("annotation") as annotation:
             for path in paths:
                 path = Path(path)
@@ -47,6 +47,28 @@ class MorkQueryGenerator:
     def generate_id(self):
         import uuid
         return str(uuid.uuid4())[:8]
+
+    def _normalize_atom_label(self, value):
+        if value is None:
+            return ""
+        return str(value).replace(" ", "_")
+
+    def _serialize_metta_value(self, value):
+        if isinstance(value, bool):
+            return "true" if value else "false"
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            return str(value)
+        if value is None:
+            return '"null"'
+        if isinstance(value, (list, dict)):
+            raw = json.dumps(value, ensure_ascii=True)
+            escaped = raw.replace("\\", "\\\\").replace('"', '\\"')
+            return f'"{escaped}"'
+        if isinstance(value, str):
+            escaped = value.replace("\\", "\\\\").replace('"', '\\"')
+            return f'"{escaped}"'
+        escaped = str(value).replace("\\", "\\\\").replace('"', '\\"')
+        return f'"{escaped}"'
 
     def construct_node_representation(self, node, identifier):
         node_type = node['type']
@@ -90,7 +112,6 @@ class MorkQueryGenerator:
             timestamp = datetime.datetime.utcnow().isoformat()
 
             for pattern, template, _ in queries:
-                # Ensure pattern/template are tuples
                 if isinstance(pattern, str):
                     pattern = (pattern,)
                 if isinstance(template, str):
@@ -167,15 +188,12 @@ class MorkQueryGenerator:
                     if len(node["properties"]) == 0:
                         pattern.append(f'({node_type} ${node_id})')
                     else:
-                        pattern.append(self.construct_node_representation(
-                            node, node_identifier))
+                        pattern.append(self.construct_node_representation(node, node_identifier))
                     template.append(f'({self.current_id} ({node_type} {node_identifier}))')
 
             query = (tuple(pattern), tuple(template), 'query')
-            total_count_query = (
-                tuple(pattern), tuple(template), 'total_count')
-            label_count_query = (
-                tuple(pattern), tuple(template), 'label_count')
+            total_count_query = (tuple(pattern), tuple(template), 'total_count')
+            label_count_query = (tuple(pattern), tuple(template), 'label_count')
 
             return [query, total_count_query, label_count_query]
         for predicate in predicates:
@@ -188,8 +206,7 @@ class MorkQueryGenerator:
             source_node = node_map[source_id]
             if not source_node['id']:
                 node_identifier = "$" + source_id
-                node_representation = self.construct_node_representation(
-                    source_node, node_identifier)
+                node_representation = self.construct_node_representation(source_node, node_identifier)
                 if node_representation != '':
                     pattern.append(node_representation)
                 source = f'({source_node["type"]} {node_identifier})'
@@ -200,8 +217,7 @@ class MorkQueryGenerator:
             target_node = node_map[target_id]
             if not target_node['id']:
                 target_identifier = "$" + target_id
-                node_representation = self.construct_node_representation(
-                    target_node, target_identifier)
+                node_representation = self.construct_node_representation(target_node, target_identifier)
                 if node_representation != '':
                     pattern.append(node_representation)
                 target = f'({target_node["type"]} {target_identifier})'
@@ -212,11 +228,14 @@ class MorkQueryGenerator:
             pattern.append(f'({predicate_type} {source} {target})')
             template.append(f'({self.current_id} ({predicate_type} {source} {target}))')
 
-            # Add predicate property constraints, if any
             if isinstance(predicate_properties, dict):
                 for prop_key, prop_value in predicate_properties.items():
+                    prop_key_label = self._normalize_atom_label(prop_key)
+                    if not prop_key_label:
+                        continue
+                    prop_value_literal = self._serialize_metta_value(prop_value)
                     pattern.append(
-                        f'({prop_key} ({predicate_type} {source} {target}) {prop_value})'
+                        f'({prop_key_label} ({predicate_type} {source} {target}) {prop_value_literal})'
                     )
 
         query = (tuple(pattern), tuple(template), 'query')
@@ -243,9 +262,9 @@ class MorkQueryGenerator:
                 else:
                     predicate, src_type, src_id, tgt_type, tgt_id = tuple
                     result.append({
-                        "predicate": predicate,
-                        "source": f"{src_type} {src_id}",
-                        "target": f"{tgt_type} {tgt_id}"
+                    "predicate": predicate,
+                    "source": f"{src_type} {src_id}",
+                    "target": f"{tgt_type} {tgt_id}"
                     })
 
         if len(result) == 0:
@@ -333,8 +352,7 @@ class MorkQueryGenerator:
             }
 
     def parse_and_serialize_properties(self, input, graph_components, result_type):
-        (nodes, edges, _, _, meta_data) = self.process_result(
-            input, graph_components, result_type)
+        (nodes, edges, _, _, meta_data) = self.process_result(input, graph_components, result_type)
         return {"nodes": nodes[0], "edges": edges[0],
                 "node_count": meta_data.get('node_count', 0),
                 "edge_count": meta_data.get('edge_count', 0),
@@ -478,8 +496,7 @@ class MorkQueryGenerator:
                 edge_data['data'] = relationships_dict[key]
                 edge_to_dict[predicate].append(edge_data)
         node_list = [{"data": node} for node in nodes.values()]
-        relationship_list = [{"data": relationship}
-                             for relationship in relationships_dict.values()]
+        relationship_list = [{"data": relationship} for relationship in relationships_dict.values()]
 
         node_result.append(node_list)
         edge_result.append(relationship_list)
@@ -520,8 +537,7 @@ class MorkQueryGenerator:
 
         for node in nodes:
             is_named_type = node['type'] in named_types
-            is_name_as_id = all(not node["id"].startswith(
-                prefix) for prefix in prefixes)
+            is_name_as_id = all(not node["id"].startswith(prefix) for prefix in prefixes)
             no_id = node["id"] != ''
             if is_named_type and is_name_as_id and no_id:
                 node_type = named_types[node['type']]
@@ -543,7 +559,6 @@ class MorkQueryGenerator:
             key = list(source["properties"].keys())[0]
             value = list(source["properties"].values())[0]
 
-            # Single string per logical unit
             pattern.append(f"({key} ({source_type} ${go_id}) {value}) ")
             pattern.append(
                 f"({relationship} ({source_type} ${go_id}) ({target_type} {target_id}))"
@@ -571,19 +586,14 @@ class MorkQueryGenerator:
 
     def parse_list_query(self, results):
 
-        # If empty list → return empty
         if not results:
             return {}
 
-        # Detect if it's a double list (list containing a list)
-        # Example: [ [...something...] ]
         if len(results) == 1 and isinstance(results[0], list):
             inner = results[0]
         else:
-            # Single list case: [...something...]
             inner = results
 
-        # If still empty after normalization → return empty
         if not inner:
             return {}
 
