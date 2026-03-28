@@ -1,8 +1,12 @@
 #!/usr/bin/env python3
+
 import os
 import subprocess
 import sys
 from pathlib import Path
+from dotenv import load_dotenv
+
+load_dotenv()
 
 def main():
     mork_data_dir = os.getenv("MORK_DATA_DIR")
@@ -28,6 +32,8 @@ def main():
 
     try:
         result = subprocess.run(docker_cmd, check=True)
+    except FileNotFoundError:
+        print("Error: 'docker' command not found. Please ensure Docker is installed and on your PATH.", file=sys.stderr)
     except subprocess.CalledProcessError as exc:
         return exc.returncode
     return result.returncode
