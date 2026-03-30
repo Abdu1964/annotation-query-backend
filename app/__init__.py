@@ -114,7 +114,7 @@ def _load_mork_cli_generator():
 databases = {
     "metta": lambda: MeTTa_Query_Generator("./Data"),
     "cypher": lambda: CypherQueryGenerator("./cypher_data"),
-    "mork": lambda: MorkQueryGenerator("./mork_data")
+    "mork": lambda: MorkQueryGenerator("./mork_data"),
     "mork": _load_mork_generator,
     "mork_cli": _load_mork_cli_generator
     # Add other database instances here
@@ -130,6 +130,7 @@ llm = LLMHandler()
 app.config['llm_handler'] = llm
 app.config['es_db'] = es_db
 app.config['db_type'] = database_type
+app.config['annotation_lock'] = threading.Lock()
 
 graph_info = json.load(open(GRAPH_INFO_PATH))
 

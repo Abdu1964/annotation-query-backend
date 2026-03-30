@@ -55,8 +55,10 @@ def init_logging():
     root_logger.setLevel(logging.INFO)
 
     # Add handlers
-    root_logger.addHandler(axiom_handler)
-    root_logger.addHandler(app_file_handler)
+    if axiom_handler is not None:
+        root_logger.addHandler(axiom_handler)
+    if app_file_handler is not None:
+        root_logger.addHandler(app_file_handler)
 
     # Optional: also log to console
     console_handler = logging.StreamHandler()
@@ -81,8 +83,11 @@ def init_logging():
     # --- Performance logger ---
     perf_logger = logging.getLogger("performance")
     perf_logger.setLevel(logging.INFO)
-    perf_logger.addHandler(perf_handler)
-    perf_logger.addHandler(perf_file_handler)  # Add file handler
-    perf_logger.addHandler(console_handler)
+    if perf_handler is not None:
+        perf_logger.addHandler(perf_handler)
+    if perf_file_handler is not None:
+        perf_logger.addHandler(perf_file_handler)
+    if console_handler is not None:
+        perf_logger.addHandler(console_handler)
     
     return perf_logger

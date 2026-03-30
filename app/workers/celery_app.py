@@ -14,7 +14,8 @@ celery_app = Celery(
     backend=os.getenv("REDIS_URL")   
 )
 
-redis_state = redis.Redis(host='redis', port=6379, db=2)
+redis_state = redis.from_url(os.environ['REDIS_URL'])
+#redis_state = redis.Redis(host='redis', port=6379, db=2)
 
 def init_request_state(request_id):
     redis_state.hmset(f"annotation:{request_id}", {

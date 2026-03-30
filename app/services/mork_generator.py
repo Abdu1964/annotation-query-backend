@@ -124,10 +124,10 @@ class MorkQueryGenerator:
                         with annotation.work_at(f"{self.current_id}") as tmp:
                             tmp.clear()
                     metta_result = self.metta.parse_all(result.data)
-                    metta_results.extend(metta_result)
+                    metta_results.append(metta_result)
                 except Exception as e:
-                    print("Query failed:", pattern, template)
-                    print(e)
+                    app.logger.error(f"Query failed: {pattern} {template}")
+                    app.logger.error(e)
 
             duration = (time.time() - start_time) * 1000  # in ms
 
@@ -323,26 +323,26 @@ class MorkQueryGenerator:
             if not tuples:
                 nodes, edges = self.parse_and_seralize_no_properties(
                     prev_result)
+                meta_data = get_total_counts({"nodes": nodes, "edges": edges})
+                meta_data.update(get_count_by_label({"nodes": nodes, "edges": edges}))
+                
                 return {"nodes": nodes, "edges": edges,
-                        "node_count": 0,
-                        "edge_count": 0,
-                        "node_count_by_label": [],
-                        "edge_count_by_label": []
+                        "node_count": meta_data.get('node_count', 0),
+                        "edge_count": meta_data.get('edge_count', 0),
+                        "node_count_by_label": meta_data.get('node_count_by_label', []),
+                        "edge_count_by_label": meta_data.get('edge_count_by_label', [])
                         }
             else:
                 result = self.parse_and_serialize_properties(
                     result, graph_components, result_type)
             return result
         else:
-            tt_res = input[0]
-            cbl_res = input[1]
-            meta_data = {}  # Initialize to avoid unbound variable
-
-            if tt_res:
-                meta_data = get_total_counts(input[0])
-
-            if cbl_res:
-                meta_data = get_count_by_label(input[1])
+            # map indices for node and edge counts
+            idx_total = 1 if len(input) == 3 else 0
+            idx_label = 2 if len(input) == 3 else 1
+            
+            meta_data = self.process_result_count(
+                input[idx_total], input[idx_label], graph_components)
 
             return {
                 "node_count": meta_data.get('node_count', 0),
@@ -411,6 +411,8 @@ class MorkQueryGenerator:
         if result_type == 'graph':
             nodes, edges, node_to_dict, edge_to_dict = self.process_result_graph(
                 results[0], graph_components)
+            meta_data = get_total_counts({"nodes": nodes[0], "edges": edges[0]})
+            meta_data.update(get_count_by_label({"nodes": nodes[0], "edges": edges[0]}))
 
         if result_type == 'count':
             if len(results) > 0:
@@ -439,6 +441,9 @@ class MorkQueryGenerator:
                        'pathway_name', 'term_name']
 
         for match in tuples:
+            if match[0] == "tmp":
+                match = match[1:]
+
             graph_attribute = match[0]
             match = match[1:]
 
@@ -503,32 +508,59 @@ class MorkQueryGenerator:
         return (node_result, edge_result, node_to_dict, edge_to_dict)
 
     def process_result_count(self, node_and_edge_count, count_by_label, graph_components):
+        meta_data = {}
+        node_label_count = {}
+        edge_label_count = {}
+        total_nodes = 0
+        total_edges = 0
+
         if len(node_and_edge_count) != 0:
-            node_and_edge_count = node_and_edge_count[0].get_object().value
-        node_count_by_label = []
-        edge_count_by_label = []
+            if hasattr(node_and_edge_count[0], 'get_object'):
+                val = node_and_edge_count[0].get_object().value
+                if isinstance(val, dict):
+                    total_nodes = val.get('total_nodes', 0)
+                    total_edges = val.get('total_edges', 0)
+            else:
+                tuples = metta_seralizer(node_and_edge_count)
+                for item in tuples:
+                    if item[0] == 'total_nodes':
+                        total_nodes = item[1]
+                    elif item[0] == 'total_edges':
+                        total_edges = item[1]
 
         if len(count_by_label) != 0:
-            count_by_label = count_by_label[0].get_object().value
-            node_label_count = count_by_label['node_label_count']
-            edge_label_count = count_by_label['edge_label_count']
+            if hasattr(count_by_label[0], 'get_object'):
+                val = count_by_label[0].get_object().value
+                if isinstance(val, dict):
+                    node_label_count = val.get('node_label_count', {})
+                    edge_label_count = val.get('edge_label_count', {})
+            else:
+                tuples = metta_seralizer(count_by_label)
+                for item in tuples:
+                    if item[0] == 'node_label_count' and len(item) > 2:
+                        for i in range(1, len(item), 2):
+                            label = item[i]
+                            count = item[i+1]
+                            node_label_count[label] = {"count": count}
+                    elif item[0] == 'edge_label_count' and len(item) > 2:
+                        for i in range(1, len(item), 2):
+                            label = item[i]
+                            count = item[i+1]
+                            edge_label_count[label] = {"count": count}
 
-            # update the way node count by label and edge count by label are represented
-            for key, value in node_label_count.items():
-                node_count_by_label.append(
-                    {'label': key, 'count': value['count']})
-            for key, value in edge_label_count.items():
-                edge_count_by_label.append(
-                    {'label': key, 'count': value['count']})
+        node_count_by_label = [
+            {'label': key, 'count': value['count']} for key, value in node_label_count.items()
+        ]
+        edge_count_by_label = [
+            {'label': key, 'count': value['count']} for key, value in edge_label_count.items()
+        ]
 
-        meta_data = {
-            "node_count": node_and_edge_count.get('total_nodes', 0),
-            "edge_count": node_and_edge_count.get('total_edges', 0),
-            "node_count_by_label": node_count_by_label if node_count_by_label else [],
-            "edge_count_by_label": edge_count_by_label if edge_count_by_label else []
+        return {
+            "node_count": total_nodes,
+            "edge_count": total_edges,
+            "node_count_by_label": node_count_by_label,
+            "edge_count_by_label": edge_count_by_label
         }
-
-        return meta_data
 
     def parse_id(self, request):
         nodes = request["nodes"]

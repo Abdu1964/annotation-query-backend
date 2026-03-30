@@ -112,7 +112,15 @@ def get_count_by_label(graph_data):
     else:
         nodes = graph_data.get('nodes', []) if isinstance(graph_data, dict) else []
         for node in nodes:
-            label = node['data'].get('type', 'unknown')
+            data = node.get('data', {})
+            label = data.get('type')
+            
+            if not label and 'id' in data:
+                node_id = data['id']
+                if ' ' in node_id:
+                    label = node_id.split(' ')[0]
+            
+            label = label or 'unknown'
             node_count_by_label[label] = node_count_by_label.get(label, 0) + 1
 
     # Convert node counts to the desired format
@@ -132,6 +140,8 @@ def get_count_by_label(graph_data):
     ]
 
     return {
+        "node_count": sum(node_count_by_label.values()),
+        "edge_count": sum(edge_count_by_label.values()),
         "node_count_by_label": node_count_by_label_list,
         "edge_count_by_label": edge_count_by_label_list,
     }

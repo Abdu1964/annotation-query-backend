@@ -185,7 +185,7 @@ def graph_task(query_code, annotation_id, requests, result_status, species, stat
             snp_nodes.sort(key=lambda x: (x['data'].get('chr', ''), int(x['data'].get('start', 0))))
             unique_chroms = sorted(list(set(n['data'].get('chr') for n in snp_nodes if n['data'].get('chr'))))
             
-            vcf_dir = Path("/app/public/vcf")
+            vcf_dir = Path("public/vcf").resolve()
             vcf_dir.mkdir(parents=True, exist_ok=True)
             vcf_path = vcf_dir / f"{annotation_id}.vcf"
             
@@ -234,8 +234,9 @@ def graph_task(query_code, annotation_id, requests, result_status, species, stat
             grouped_graph = graph.group_node_only(response, requests)
         else:
             grouped_graph = graph.group_graph(response)
-
-        file_path = Path("/app/public/graph") / f"{annotation_id}.json"
+            
+        file_path = Path("public/graph").resolve() / f"{annotation_id}.json"
+        #file_path = Path("/app/public/graph") / f"{annotation_id}.json"
         file_path.parent.mkdir(parents=True, exist_ok=True)
 
         with open(file_path, 'w') as file:
@@ -308,25 +309,25 @@ def total_count_task(count_query, annotation_id, requests, total_count_status, s
     try:
         total_count = db_instance.run_query(count_query, None, species)
         
-        if db_type == "mork":
+        if db_type in ["mork", "mork_cli"]:
             result = db_instance.parse_and_serialize(total_count, schema_manager.full_schema_representation, {
+                "nodes": requests.get("nodes", []),
+                "predicates": requests.get("predicates", []),
                 "properties": True
             }, 'graph')
 
-            count_result = [result, {}]
-            total_count = db_instance.parse_and_serialize(count_result, schema_manager.full_schema_representation, {}, 'count')
             update_task(annotation_id, 'total_count', 1)
 
             AnnotationStorageService.update(
                  annotation_id,
                  {
-                     "node_count": total_count["node_count"],
-                     "edge_count": total_count["edge_count"],
+                     "node_count": result["node_count"],
+                     "edge_count": result["edge_count"],
                      "status": TaskStatus.PENDING.value,
                  },
              )
             
-            socket_event = {"status": TaskStatus.PENDING.value, "update": {"node_count": total_count["node_count"], "edge_count": total_count["edge_count"]}, "annotation_id": annotation_id}
+            socket_event = {"status": TaskStatus.PENDING.value, "update": {"node_count": result["node_count"], "edge_count": result["edge_count"]}, "annotation_id": annotation_id}
             redis_client.publish('socket_event', json.dumps(socket_event))
             return
 
@@ -396,25 +397,27 @@ def label_count_task(count_query, annotation_id, requests, count_label_status, s
             redis_client.publish('socket_event', json.dumps(socket_event))
             return
 
-        if db_type == "mork":
+        if db_type in ["mork", "mork_cli"]:
             count_result = db_instance.run_query(count_query, None, species)
-            result = db_instance.parse_and_serialize(count_result, schema_manager.full_schema_representation, {"properties": True}, 'graph')
+            result = db_instance.parse_and_serialize(count_result, schema_manager.full_schema_representation, {
+                "nodes": requests.get("nodes", []),
+                "predicates": requests.get("predicates", []),
+                "properties": True
+            }, 'graph')
 
-            count_result = [{}, result]
-            total_count = db_instance.parse_and_serialize(count_result, schema_manager.full_schema_representation, {}, 'count')
             update_task(annotation_id, 'label_count', 1)
             status = TaskStatus.PENDING.value
 
             AnnotationStorageService.update(
                  annotation_id,
                  {
-                     "node_count_by_label": total_count["node_count_by_label"],
-                     "edge_count_by_label": total_count["edge_count_by_label"],
+                     "node_count_by_label": result["node_count_by_label"],
+                     "edge_count_by_label": result["edge_count_by_label"],
                      "status": status,
                  },
              )
 
-            socket_event = {"status": status, "update": {"node_count_by_label": total_count["node_count_by_label"], "edge_count_by_label": total_count["edge_count_by_label"]}, "annotation_id": annotation_id}
+            socket_event = {"status": status, "update": {"node_count_by_label": result["node_count_by_label"], "edge_count_by_label": result["edge_count_by_label"]}, "annotation_id": annotation_id}
             redis_client.publish('socket_event', json.dumps(socket_event))
             return
 

@@ -24,24 +24,24 @@ def mongo_init():
     try:
         # Define the shcemas
 
-    _client = MongoClient(
-        uri,
-        maxPoolSize=20,
-        connectTimeoutMS=5000,
-    )
+        _client = MongoClient(
+            uri,
+            maxPoolSize=20,
+            connectTimeoutMS=5000,
+        )
 
-    _db = _client[db_name]
+        _db = _client[db_name]
 
-    schemas = {
-        "annotation": Annotation(empty=True).schema,
-        "user": User(empty=True).schema,
-        "shared_annotation": SharedAnnotation(empty=True).schema,
-    }
+        schemas = {
+            "annotation": Annotation(empty=True).schema,
+            "user": User(empty=True).schema,
+            "shared_annotation": SharedAnnotation(empty=True).schema,
+        }
 
-    set_schemas(_db, schemas)
-    logging.info("MongoDB Connected!")
+        set_schemas(_db, schemas)
+        logging.info("MongoDB Connected!")
 
-    return _db
+        return _db
 
 def get_db():
     if _db is None:
