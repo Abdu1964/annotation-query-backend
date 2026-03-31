@@ -3,6 +3,7 @@ import redis
 from dotenv import load_dotenv
 from app.constants import TaskStatus
 import os 
+from db import mongo_init
 from celery.signals import worker_process_init
 
 load_dotenv()
@@ -27,5 +28,4 @@ def init_request_state(request_id):
     
 @worker_process_init.connect
 def init_mongo_worker(**kwargs):
-    from db import mongo_init
     mongo_init()

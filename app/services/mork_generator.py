@@ -68,8 +68,11 @@ class MorkQueryGenerator:
             escaped = raw.replace("\\", "\\\\").replace('"', '\\"')
             return f'"{escaped}"'
         if isinstance(value, str):
-            escaped = value.replace("\\", "\\\\").replace('"', '\\"')
-            return f'"{escaped}"'
+            if " " in value or '\n' in value:
+                escaped = value.replace("\\", "\\\\").replace('"', '\\"')
+                return f'"{escaped}"'
+            else:
+                return str(value)
         escaped = str(value).replace("\\", "\\\\").replace('"', '\\"')
         return f'"{escaped}"'
 
@@ -227,19 +230,21 @@ class MorkQueryGenerator:
             else:
                 target = f'({str(target_node["type"])} {str(target_node["id"])})'
 
-            # Add relationship
-            pattern.append(f'({predicate_type} {source} {target})')
-            template.append(f'({self.current_id} ({predicate_type} {source} {target}))')
+            base_relation = f'({predicate_type} {source} {target})'
 
-            if isinstance(predicate_properties, dict):
+            if isinstance(predicate_properties, dict) and len(predicate_properties) > 0:
                 for prop_key, prop_value in predicate_properties.items():
                     prop_key_label = self._normalize_atom_label(prop_key)
                     if not prop_key_label:
                         continue
                     prop_value_literal = self._serialize_metta_value(prop_value)
-                    pattern.append(
-                        f'({prop_key_label} ({predicate_type} {source} {target}) {prop_value_literal})'
-                    )
+                    
+                    hyperedge_expr = f'({prop_key_label} {base_relation} {prop_value_literal})'
+                    pattern.append(hyperedge_expr)
+                template.append(f'({self.current_id} {base_relation})')
+            else:
+                pattern.append(base_relation)
+                template.append(f'({self.current_id} {base_relation})')
 
         query = (tuple(pattern), tuple(template), 'query')
         total_count_query = (tuple(pattern), tuple(template), 'total_count')
