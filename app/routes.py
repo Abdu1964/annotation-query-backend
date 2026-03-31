@@ -353,6 +353,9 @@ def process_query(current_user_id):
     data = request.get_json()
     if not data or 'requests' not in data:
         return jsonify({"error": "Missing requests data"}), 400
+    
+    if app.config.get('db_type') == 'mork_cli' and not db_instance.is_ready():
+        return jsonify({"error": "MORK data file (annotation.act) is missing. Please run the build script."}), 500
 
 
     limit = request.args.get('limit')
@@ -829,6 +832,9 @@ def process_by_id(current_user_id, id):
     data = request.get_json()
     if not data or 'requests' not in data:
         return jsonify({"error": "Missing requests data"}), 400
+    
+    if app.config.get('db_type') == 'mork_cli' and not db_instance.is_ready():
+        return jsonify({"error": "MORK data file (annotation.act) is missing. Please run the build script."}), 500
 
     if 'question' not in data["requests"]:
         return jsonify({"error": "Missing question data"}), 400

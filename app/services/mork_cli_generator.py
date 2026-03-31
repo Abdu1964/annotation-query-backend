@@ -18,6 +18,10 @@ class MorkCLIQueryGenerator(MorkQueryGenerator):
             raise RuntimeError("MORK docker wrapper not found.")
         self.metta = MeTTa()
 
+    def is_ready(self):
+        act_file = self.dataset_path / "annotation.act"
+        return act_file.exists()
+
     def connect(self):
         return None
         
@@ -41,7 +45,7 @@ class MorkCLIQueryGenerator(MorkQueryGenerator):
                 )
                 app.logger.error(message)
                 print(message, flush=True)
-                return [[]]
+                raise FileNotFoundError(message)
             
             if not shm_act.exists() or (act_file.stat().st_mtime > shm_act.stat().st_mtime):
                 try:

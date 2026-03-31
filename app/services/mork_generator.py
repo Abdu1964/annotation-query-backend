@@ -21,6 +21,9 @@ class MorkQueryGenerator:
         # self.clear_space()
         # self.load_dataset(dataset_path)
 
+    def is_ready(self):
+        return True
+
     def connect(self):
         mork_url = os.getenv('MORK_URL')
         server = ManagedMORK.connect(url=mork_url)
