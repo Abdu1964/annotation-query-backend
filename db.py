@@ -1,4 +1,5 @@
 import os
+import traceback
 import logging
 from pymongo import MongoClient
 from pymongoose.methods import set_schemas
@@ -18,32 +19,25 @@ def mongo_init():
         logging.error("MONGO_URI is not set.")
         raise RuntimeError("MONGO_URI is not set.")
 
-    db_name = os.environ.get("MONGO_DB_NAME", "annotation")
+    db_name = os.environ.get("MONGO_DB_NAME", "test")
     client = MongoClient(uri)
-    db = client[db_name]
+   # db = client[db_name]
     try:
+        db = client.get_default_database()
+    except Exception:
+        db = client.test
         # Define the shcemas
-
-        _client = MongoClient(
-            uri,
-            maxPoolSize=20,
-            connectTimeoutMS=5000,
-        )
-
-        _db = _client[db_name]
-
+    try:
         schemas = {
             "annotation": Annotation(empty=True).schema,
             "user": User(empty=True).schema,
             "shared_annotation": SharedAnnotation(empty=True).schema,
         }
 
-        set_schemas(_db, schemas)
+        set_schemas(db, schemas)
+
         logging.info("MongoDB Connected!")
-
-        return _db
-
-def get_db():
-    if _db is None:
-        raise RuntimeError("MongoDB not initialized in this process")
-    return _db
+    except Exception as e:
+        traceback.print_exc()
+        logging.error(f"Error initializing database {e}")
+        exit(1)
