@@ -19,15 +19,13 @@ def mongo_init():
         logging.error("MONGO_URI is not set.")
         raise RuntimeError("MONGO_URI is not set.")
 
-    db_name = os.environ.get("MONGO_DB_NAME", "test")
     client = MongoClient(uri)
-   # db = client[db_name]
     try:
-        db = client.get_default_database()
-    except Exception:
-        db = client.test
-        # Define the shcemas
-    try:
+        try:
+            db = client.get_default_database()
+        except Exception:
+            db = client.test
+
         schemas = {
             "annotation": Annotation(empty=True).schema,
             "user": User(empty=True).schema,
@@ -36,8 +34,11 @@ def mongo_init():
 
         set_schemas(db, schemas)
 
+        mongo_db = db
         logging.info("MongoDB Connected!")
+        return db
+        
     except Exception as e:
         traceback.print_exc()
         logging.error(f"Error initializing database {e}")
-        exit(1)
+        raise RuntimeError(f"Error initializing database {e}")

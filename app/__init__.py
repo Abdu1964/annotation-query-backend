@@ -98,16 +98,12 @@ schema_manager = SchemaManager(schema_config_path='./config/schema_config.yaml',
 
 
 from app.services.mork_generator import MorkQueryGenerator
-mork_data_dir = os.environ.get("MORK_DATA_DIR")
-if not mork_data_dir:
-    logging.error("MORK_DATA_DIR is not set.")
-    raise RuntimeError("MORK_DATA_DIR is not set.")
-
-def _load_mork_generator():
-    module = importlib.import_module("app.services.mork_generator")
-    return module.MorkQueryGenerator("./mork_data")
 
 def _load_mork_cli_generator():
+    mork_data_dir = os.environ.get("MORK_DATA_DIR")
+    if not mork_data_dir:
+        logging.error("MORK_DATA_DIR is not set.")
+        raise RuntimeError("MORK_DATA_DIR is not set.")
     module = importlib.import_module("app.services.mork_cli_generator")
     return module.MorkCLIQueryGenerator(mork_data_dir)
 
@@ -115,7 +111,6 @@ databases = {
     "metta": lambda: MeTTa_Query_Generator("./Data"),
     "cypher": lambda: CypherQueryGenerator("./cypher_data"),
     "mork": lambda: MorkQueryGenerator("./mork_data"),
-    "mork": _load_mork_generator,
     "mork_cli": _load_mork_cli_generator
     # Add other database instances here
 }

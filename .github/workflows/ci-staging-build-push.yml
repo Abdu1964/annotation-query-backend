@@ -213,7 +213,7 @@ jobs:
           caddy_config:
         EOF
         
-        # Create test data directors
+        # Create test data directories
         mkdir -p /tmp/test_data
         mkdir -p /tmp/mork_data
         touch /tmp/mork_data/annotation.act
