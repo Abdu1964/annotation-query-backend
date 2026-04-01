@@ -166,6 +166,11 @@ jobs:
               
               # File Paths - Use temp directory
               - PARENT_DIR=$PARENT_DIR
+              - MORK_DATA_DIR=/tmp/mork_data
+              
+              # Elasticsearch
+              - ES_URL=http://elasticsearch:9200
+              - ES_API_KEY=test_api_key
               
               # Docker
               - DOCKER_HUB_REPO=$DOCKER_HUB_REPO
@@ -208,8 +213,10 @@ jobs:
           caddy_config:
         EOF
         
-        # Create test data directory
+        # Create test data directors
         mkdir -p /tmp/test_data
+        mkdir -p /tmp/mork_data
+        touch /tmp/mork_data/annotation.act
         
         # Step 1: Start all services with docker compose up
         echo "=== Step 1: Starting all services with 'docker compose up' ==="
