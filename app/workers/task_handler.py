@@ -235,8 +235,8 @@ def graph_task(query_code, annotation_id, requests, result_status, species, stat
         else:
             grouped_graph = graph.group_graph(response)
             
-        file_path = Path("public/graph").resolve() / f"{annotation_id}.json"
-        #file_path = Path("/app/public/graph") / f"{annotation_id}.json"
+        base_graph_dir = Path(app.root_path) / "public" / "graph"
+        file_path = base_graph_dir / f"{annotation_id}.json"
         file_path.parent.mkdir(parents=True, exist_ok=True)
 
         with open(file_path, 'w') as file:
