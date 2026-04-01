@@ -72,24 +72,11 @@ try:
     if es_db.ping():
         print("Elasticsearch connected")
     else:
-        print("Elasticsearch not reachable, continuing without it")
-        logger.error("Elasticsearch not reachable")
+        logger.error("Elasticsearch not reachable, continuing without it")
         es_db = None
-except:
-    logger.error("Elasticsearch not reachable")
+except Exception as e:
+    logger.error(f"Elasticsearch not reachable: {e}")
     es_db = None
-else:
-    try:
-        es_db = Elasticsearch(ES_URL, api_key=ES_API_KEY, max_retries=0, request_timeout=2)
-        if es_db.ping():
-            print("Elasticsearch connected")
-        else:
-            print("Elasticsearch not reachable, continuing without it")
-            logging.error("Elasticsearch not reachable")
-            es_db = None
-    except (ConnectionError, ValueError) as exc:
-        logging.error("Elasticsearch not reachable: %s", exc)
-        es_db = None
 
 schema_manager = SchemaManager(schema_config_path='./config/schema_config.yaml',
                                biocypher_config_path='./config/biocypher_config.yaml',
