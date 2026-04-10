@@ -130,7 +130,7 @@ class MorkQueryGenerator:
                         with annotation.work_at(f"{self.current_id}") as tmp:
                             tmp.clear()
                     metta_result = self.metta.parse_all(result.data)
-                    metta_results.append(metta_result)
+                    metta_results.extend(metta_result)
                 except Exception as e:
                     app.logger.error(f"Query failed: {pattern} {template}")
                     app.logger.error(e)

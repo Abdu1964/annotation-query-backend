@@ -68,9 +68,9 @@ def validate_request(request, schema, source):
                 raise Exception("target is required")
             
             #to allow properties edges
-            if 'properties' in predicate and not isinstance(predicate['properties'], dict):
-                raise Exception("predicate properties should be a dictionary")
-            predicate.setdefault('properties', {})
+            # if 'properties' in predicate and not isinstance(predicate['properties'], dict):
+            #     raise Exception("predicate properties should be a dictionary")
+            # predicate.setdefault('properties', {})
             
             predicate['source'] = clean_string(predicate['source'])
             predicate['target'] = clean_string(predicate['target'])
