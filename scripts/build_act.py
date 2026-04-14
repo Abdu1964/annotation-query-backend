@@ -71,6 +71,7 @@ def build_act(data_dir, output_act=None):
 
     print(f"2. Compiling into binary Arena (ACT)...")
     convert_cmd = [
+        sys.executable,
         mork_bin,
         "convert",
         "metta",
