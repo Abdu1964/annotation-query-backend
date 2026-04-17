@@ -1,6 +1,6 @@
 import os
 import logging
-from pathlib import Path
+from logging.handlers import RotatingFileHandler
 import axiom_py
 from axiom_py.logging import AxiomHandler
 import sentry_sdk
@@ -11,9 +11,9 @@ from logging.handlers import RotatingFileHandler
 load_dotenv()
 
 def init_logging():
-    # Create logs directory for file logging
-    logs_dir = Path("logs")
-    logs_dir.mkdir(exist_ok=True)
+    # Create logfiles directory
+    log_dir = "logs"
+    os.makedirs(log_dir, exist_ok=True)
     
     # --- Sentry ---
     DSN = os.getenv("SENTRY_DSN")
@@ -44,24 +44,26 @@ def init_logging():
     dataset_name = os.getenv("AXIOM_DATASET", "application-logs")  # configurable
     axiom_handler = AxiomHandler(client, dataset_name)
 
-    # --- Root logger ---
+    # --- File Handler for Application Logs ---
+    app_file_handler = RotatingFileHandler(
+        os.path.join(log_dir, "application.log"),
+        maxBytes=10*1024*1024,  # 10MB
+        backupCount=5,
+        encoding='utf-8'
+    )
+    app_file_handler.setLevel(logging.INFO)
+    formatter = logging.Formatter(
+        '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    )
+    app_file_handler.setFormatter(formatter)
+
     root_logger = logging.getLogger()
     root_logger.setLevel(logging.INFO)
 
     # Add handlers
     root_logger.addHandler(axiom_handler)
-    
-   # File Handler for Promtail
-    app_log_file = logs_dir / "annotation-app.log"
-    file_handler = RotatingFileHandler(
-        app_log_file,
-        maxBytes=10*1024*1024,  # 10MB
-        backupCount=5,
-        encoding='utf-8'
-    )
-    file_handler.setFormatter(formatter)
-    file_handler.setLevel(logging.INFO)
-    
+    root_logger.addHandler(app_file_handler)
+
     # Optional: also log to console
     console_handler = logging.StreamHandler()
     console_handler.setLevel(logging.INFO)
@@ -70,24 +72,25 @@ def init_logging():
     root_logger.addHandler(file_handler)
     root_logger.addHandler(console_handler)
     
-    # --- Performance logger ---
+    # --- Performance Logs ---
     PERF_LOGS_DATASET = os.getenv("AXIOM_PERFORMANCE_LOGS", "performance-metrics")
     perf_handler = AxiomHandler(client, PERF_LOGS_DATASET)
     
-    perf_logger = logging.getLogger("performance")
-    perf_logger.setLevel(logging.INFO)
-    perf_logger.addHandler(perf_handler)
-    perf_logger.addHandler(console_handler)
-    
-    # Add file handler to performance logger
-    perf_log_file = logs_dir / "annotation-performance.log"
+    # --- File Handler for Performance Logs ---
     perf_file_handler = RotatingFileHandler(
-        perf_log_file,
+        os.path.join(log_dir, "performance.log"),
         maxBytes=10*1024*1024,
         backupCount=5,
         encoding='utf-8'
     )
+    perf_file_handler.setLevel(logging.INFO)
     perf_file_handler.setFormatter(formatter)
-    perf_logger.addHandler(perf_file_handler)
+    
+    # --- Performance logger ---
+    perf_logger = logging.getLogger("performance")
+    perf_logger.setLevel(logging.INFO)
+    perf_logger.addHandler(perf_handler)
+    perf_logger.addHandler(perf_file_handler)  # Add file handler
+    perf_logger.addHandler(console_handler)
     
     return perf_logger
