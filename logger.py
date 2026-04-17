@@ -39,10 +39,17 @@ def init_logging():
     console_handler.setLevel(logging.INFO)
     console_handler.setFormatter(formatter)
 
-    # --- Axiom ---
-    client = axiom_py.Client()
-    dataset_name = os.getenv("AXIOM_DATASET", "application-logs")  # configurable
-    axiom_handler = AxiomHandler(client, dataset_name)
+    # --- Axiom (optional - only if AXIOM_TOKEN is set) ---
+    axiom_handler = None
+    axiom_token = os.getenv("AXIOM_TOKEN", "").strip()
+    client = None
+    if axiom_token:
+        try:
+            client = axiom_py.Client()
+            dataset_name = os.getenv("AXIOM_DATASET", "application-logs")
+            axiom_handler = AxiomHandler(client, dataset_name)
+        except Exception:
+            logging.getLogger().exception("Failed to initialize Axiom handler")
 
     # --- File Handler for Application Logs ---
     file_handler = None
@@ -64,21 +71,28 @@ def init_logging():
     root_logger.setLevel(logging.INFO)
 
     # Add handlers
-    root_logger.addHandler(axiom_handler)
+    if axiom_handler is not None:
+        root_logger.addHandler(axiom_handler)
 
     # Optional: also log to console
     console_handler = logging.StreamHandler()
     console_handler.setLevel(logging.INFO)
     console_handler.setFormatter(formatter)
     # Add ALL handlers  
-    root_logger.addHandler(axiom_handler)
+    if axiom_handler is not None:
+        root_logger.addHandler(axiom_handler)
     if file_handler is not None:
         root_logger.addHandler(file_handler)
     root_logger.addHandler(console_handler)
     
     # --- Performance Logs ---
-    PERF_LOGS_DATASET = os.getenv("AXIOM_PERFORMANCE_LOGS", "performance-metrics")
-    perf_handler = AxiomHandler(client, PERF_LOGS_DATASET)
+    perf_handler = None
+    if axiom_token and client is not None:
+        try:
+            PERF_LOGS_DATASET = os.getenv("AXIOM_PERFORMANCE_LOGS", "performance-metrics")
+            perf_handler = AxiomHandler(client, PERF_LOGS_DATASET)
+        except Exception:
+            logging.getLogger().exception("Failed to initialize Axiom performance handler")
 
     # --- File Handler for Performance Logs ---
     perf_file_handler = None
@@ -98,7 +112,8 @@ def init_logging():
     # --- Performance logger ---
     perf_logger = logging.getLogger("performance")
     perf_logger.setLevel(logging.INFO)
-    perf_logger.addHandler(perf_handler)
+    if perf_handler is not None:
+        perf_logger.addHandler(perf_handler)
     if perf_file_handler is not None:
         perf_logger.addHandler(perf_file_handler)
     perf_logger.addHandler(console_handler)
