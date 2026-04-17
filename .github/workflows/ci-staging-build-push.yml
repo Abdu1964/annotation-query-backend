@@ -17,7 +17,7 @@ env:
   CADDY_PORT_FORWARD: 6001
 permissions:
   contents: read
-  security-events: write  # Required for uploading security scan results
+  security-events: write  # write includes read access
   pull-requests: read
 
 jobs:
@@ -195,10 +195,10 @@ jobs:
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4
-     
+
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v3
-     
+
     - name: Login to Docker Hub
       if: github.event_name == 'pull_request' && github.event.action == 'closed' && github.event.pull_request.merged == true
       uses: docker/login-action@v3
@@ -535,11 +535,11 @@ jobs:
         trivy image --format sarif --output trivy-results.sarif $IMAGE_TAG
     
     - name: Upload Trivy results to GitHub Security
-      if: always() && steps.validate-container.outcome == 'success'
+      if: always() && steps.validate-container.outcome == 'success' && github.event_name == 'push'
       uses: github/codeql-action/upload-sarif@v4
       with:
         sarif_file: 'trivy-results.sarif'
-        continue-on-error: true 
+      continue-on-error: true 
 
     # STEP 6: Load Testing
     - name: Run basic load test
