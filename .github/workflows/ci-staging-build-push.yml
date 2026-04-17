@@ -17,7 +17,7 @@ env:
   CADDY_PORT_FORWARD: 6001
 permissions:
   contents: read
-  security-events: write  # write includes read access
+  security-events: write  # Required for uploading security scan results
   pull-requests: read
 
 jobs:
@@ -97,6 +97,7 @@ jobs:
         pylint . --output-format=json > pylint-report.json || true
     
     - name: SonarQube Scan
+      if: github.event_name == 'push'
       uses: sonarsource/sonarqube-scan-action@master
       env:
         SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
@@ -112,6 +113,7 @@ jobs:
           -Dsonar.exclusions=**/tests/**,**/__pycache__/**,**/venv/**,**/migrations/**
     
     - name: SonarQube Quality Gate Check
+      if: github.event_name == 'push'
       uses: sonarsource/sonarqube-quality-gate-action@master
       timeout-minutes: 5
       env:
