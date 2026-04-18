@@ -29,9 +29,14 @@ def init_logging():
     )
 
     # --- Axiom ---
-    client = axiom_py.Client()
-    dataset_name = os.getenv("AXIOM_DATASET", "application-logs")  # configurable
-    axiom_handler = AxiomHandler(client, dataset_name)
+    axiom_token = os.getenv("AXIOM_TOKEN")
+    client = None
+    axiom_handler = None
+    perf_handler = None
+    if axiom_token:
+        client = axiom_py.Client()
+        dataset_name = os.getenv("AXIOM_DATASET", "application-logs")  # configurable
+        axiom_handler = AxiomHandler(client, dataset_name)
 
     # --- File Handler for Application Logs ---
     app_file_handler = RotatingFileHandler(
@@ -50,8 +55,10 @@ def init_logging():
     root_logger.setLevel(logging.INFO)
 
     # Add handlers
-    root_logger.addHandler(axiom_handler)
-    root_logger.addHandler(app_file_handler)
+    if axiom_handler is not None:
+        root_logger.addHandler(axiom_handler)
+    if app_file_handler is not None:
+        root_logger.addHandler(app_file_handler)
 
     # Optional: also log to console
     console_handler = logging.StreamHandler()
@@ -60,7 +67,8 @@ def init_logging():
     
     # --- Performance Logs ---
     PERF_LOGS_DATASET = os.getenv("AXIOM_PERFORMANCE_LOGS", "performance-metrics")
-    perf_handler = AxiomHandler(client, PERF_LOGS_DATASET)
+    if client:
+        perf_handler = AxiomHandler(client, PERF_LOGS_DATASET)
     
     # --- File Handler for Performance Logs ---
     perf_file_handler = RotatingFileHandler(
@@ -75,8 +83,11 @@ def init_logging():
     # --- Performance logger ---
     perf_logger = logging.getLogger("performance")
     perf_logger.setLevel(logging.INFO)
-    perf_logger.addHandler(perf_handler)
-    perf_logger.addHandler(perf_file_handler)  # Add file handler
-    perf_logger.addHandler(console_handler)
+    if perf_handler is not None:
+        perf_logger.addHandler(perf_handler)
+    if perf_file_handler is not None:
+        perf_logger.addHandler(perf_file_handler)
+    if console_handler is not None:
+        perf_logger.addHandler(console_handler)
     
     return perf_logger

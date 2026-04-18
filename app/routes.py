@@ -15,7 +15,6 @@ from app.lib.auth import token_required, socket_token_required
 from app.lib.email import init_mail, send_email
 from app.lib.utils import convert_to_csv
 from dotenv import load_dotenv
-from distutils.util import strtobool
 import datetime
 from app.lib import Graph, heuristic_sort
 from app.annotation_controller import handle_client_request, process_full_data, requery
@@ -38,6 +37,16 @@ logging.getLogger('pymongo').setLevel(logging.CRITICAL)
 
 # set redis logging
 logging.getLogger('flask_redis').setLevel(logging.CRITICAL)
+
+#distutils.util.strtobool is deprecated
+def strtobool(val):
+    val = str(val).lower()
+    if val in ('y', 'yes', 't', 'true', 'on', '1'):
+        return 1
+    elif val in ('n', 'no', 'f', 'false', 'off', '0'):
+        return 0
+    else:
+        raise ValueError(f"invalid truth value {val!r}")
 
 # Flask-Mail configuration
 app.config['MAIL_SERVER'] = os.getenv('MAIL_SERVER')
@@ -344,6 +353,9 @@ def process_query(current_user_id):
     data = request.get_json()
     if not data or 'requests' not in data:
         return jsonify({"error": "Missing requests data"}), 400
+    
+    if app.config.get('db_type') == 'mork_cli' and not db_instance.is_ready():
+        return jsonify({"error": "MORK data file (annotation.act) is missing. Please run the build script."}), 500
 
 
     limit = request.args.get('limit')
@@ -820,6 +832,9 @@ def process_by_id(current_user_id, id):
     data = request.get_json()
     if not data or 'requests' not in data:
         return jsonify({"error": "Missing requests data"}), 400
+    
+    if app.config.get('db_type') == 'mork_cli' and not db_instance.is_ready():
+        return jsonify({"error": "MORK data file (annotation.act) is missing. Please run the build script."}), 500
 
     if 'question' not in data["requests"]:
         return jsonify({"error": "Missing question data"}), 400

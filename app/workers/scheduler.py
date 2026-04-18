@@ -8,7 +8,7 @@ import logging
 import datetime
 import threading
 from urllib.parse import urlparse
-from app import app
+from app import app, db_instance as db
 
 REDIS_URL = app.config['REDIS_URL']
 parsed = urlparse(REDIS_URL)
@@ -17,7 +17,6 @@ port = parsed.port or 6379
 password = parsed.password
 
 file_lock = threading.Lock()
-db = CypherQueryGenerator('/data')
 
 def update_total_entity_count():
     try:

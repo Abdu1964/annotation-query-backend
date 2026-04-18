@@ -9,6 +9,7 @@ from logger import init_logging
 from app.persistence import AnnotationStorageService, UserStorageService
 import os
 import logging
+import importlib
 import yaml
 import redis
 from app.error import ThreadStopException, TaskCancelledException
@@ -27,7 +28,6 @@ logger = logging.getLogger(__name__)
 perf_logger = init_logging()
 
 app = Flask(__name__)
-# Disable werkzeug request logs
 logging.getLogger('werkzeug').disabled = True
 socketio = SocketIO(app, cors_allowed_origins='*',
                     async_mode='threading', logger=False, engineio_logger=False)
@@ -72,11 +72,10 @@ try:
     if es_db.ping():
         print("Elasticsearch connected")
     else:
-        print("Elasticsearch not reachable, continuing without it")
-        logger.error("Elasticsearch not reachable")
+        logger.error("Elasticsearch not reachable, continuing without it")
         es_db = None
-except:
-    logger.error("Elasticsearch not reachable")
+except Exception as e:
+    logger.error(f"Elasticsearch not reachable: {e}")
     es_db = None
 
 schema_manager = SchemaManager(schema_config_path='./config/schema_config.yaml',
@@ -87,10 +86,20 @@ schema_manager = SchemaManager(schema_config_path='./config/schema_config.yaml',
 
 from app.services.mork_generator import MorkQueryGenerator
 
+def _load_mork_cli_generator():
+    mork_data_dir = os.environ.get("MORK_DATA_DIR")
+    if not mork_data_dir:
+        logging.error("MORK_DATA_DIR is not set.")
+        raise RuntimeError("MORK_DATA_DIR is not set.")
+    module = importlib.import_module("app.services.mork_cli_generator")
+    return module.MorkCLIQueryGenerator(mork_data_dir)
+
 databases = {
     "metta": lambda: MeTTa_Query_Generator("./Data"),
     "cypher": lambda: CypherQueryGenerator("./cypher_data"),
-    "mork": lambda: MorkQueryGenerator("./mork_data")
+    "mork": lambda: MorkQueryGenerator("./mork_data"),
+    "mork_cli": _load_mork_cli_generator
+    # Add other database instances here
 }
 
 database_type = config['database']['type']
@@ -103,6 +112,7 @@ llm = LLMHandler()
 app.config['llm_handler'] = llm
 app.config['es_db'] = es_db
 app.config['db_type'] = database_type
+app.config['annotation_lock'] = threading.Lock()
 
 graph_info = json.load(open(GRAPH_INFO_PATH))
 
