@@ -33,6 +33,9 @@ jobs:
             celery-worker-staging=abdum1964/annotation:staging \
             -n annotation-staging || true
 
+          kubectl rollout restart deployment/annotation-service-staging -n annotation-staging
+          kubectl rollout restart deployment/celery-worker-staging -n annotation-staging
+
       - name: Wait for rollout
         run: |
           kubectl rollout status deployment/annotation-service-staging \
