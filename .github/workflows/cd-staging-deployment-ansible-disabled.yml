@@ -1,8 +1,7 @@
 name: CD - pull Docker image & build with ansible (staging only)
 
 on:
-  repository_dispatch:
-    types: [deploy-staging]
+    workflow_dispatch:
 
 jobs:
   deploy:
