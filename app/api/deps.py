@@ -76,6 +76,14 @@ def get_schema_manager() -> SchemaManager:
         logger.info("✅ [Deps] SchemaManager initialized")
     return _schema_manager
 
+def _load_mork_cli_generator():
+    mork_data_dir = os.environ.get("MORK_DATA_DIR")
+    if not mork_data_dir:
+        logging.error("MORK_DATA_DIR is not set.")
+        raise RuntimeError("MORK_DATA_DIR is not set.")
+    module = importlib.import_module("app.services.mork_cli_generator")
+    return module.MorkCLIQueryGenerator(mork_data_dir)
+
 def get_db_instance() -> Any:
     """Returns a singleton Database Query Generator instance based on settings."""
     global _db_instance
@@ -83,7 +91,8 @@ def get_db_instance() -> Any:
         databases = {
             "metta": lambda: MeTTa_Query_Generator("./Data"),
             "cypher": lambda: CypherQueryGenerator("./cypher_data"),
-            "mork": lambda: MorkQueryGenerator("./mork_data")
+            "mork": lambda: MorkQueryGenerator("./mork_data"),
+            "mork_cli": _load_mork_cli_generator()
         }
         db_type = settings.DATABASE_TYPE
         if db_type in databases:

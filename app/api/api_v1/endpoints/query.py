@@ -619,16 +619,16 @@ def delete_by_id(id: str, current_user_id: str = Depends(get_current_user)):
             raise HTTPException(status_code=404, detail="Annotation not found")
 
         # first check if there is any running running annoation
-            stop_event = RedisStopEvent(id, redis_state)
-            status = stop_event.get_status()
+        stop_event = RedisStopEvent(id, redis_state)
+        status = stop_event.get_status()
 
-            # if there is stop the running annoation
-            if status is not None:
-                stop_event.set_event()
+        # if there is stop the running annoation
+        if status is not None:
+            stop_event.set_event()
 
-                response_data = {
-                    'message': f'Annotation {id} has been cancelled.'
-                }
+            response_data = {
+                'message': f'Annotation {id} has been cancelled.'
+            }
 
         # else delete the annotation from the db
         existing_record = AnnotationStorageService.get_by_id(id)
@@ -743,8 +743,7 @@ def update_title(id:str, data: dict = Body(...),current_user_id: str = Depends(g
 
         logger.info(json.dumps({"status": "success", "method": "PUT",
                                   "timestamp":  datetime.datetime.now().isoformat(),
-                                  "endpoint": "/annotation/<id>/title",
-                                  "exception": str(e)}), exc_info=True)
+                                  "endpoint": "/annotation/<id>/title"}))
         return response_data
     except Exception as e:
         logger.error(json.dumps({"status": "error", "method": "PUT",

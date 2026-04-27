@@ -69,16 +69,13 @@ def socket_token_required(f):
                 
             except jwt.InvalidTokenError as e:
                 logger.error(f"Token decode error: {e}")
-                disconnect()
                 return False
             except Exception as jwt_error:
                 logger.error(f"JWT processing error: {jwt_error}")
-                disconnect()
                 return False
                 
         except Exception as e:
             logger.error(f"Socket auth error in {f.__name__}: {str(e)}")
-            disconnect()
             return False
             
     return decorated

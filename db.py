@@ -7,8 +7,9 @@ from app.models.user import User
 from app.models.shared_annotation import SharedAnnotation
 from dotenv import load_dotenv
 
-
 logger = logging.getLogger(__name__)
+
+load_dotenv()
 
 MONGO_URI = os.environ.get("MONGO_URI")
 
@@ -21,22 +22,37 @@ def mongo_init():
     if _client is not None:
         return _db  # already initialized in this process
 
-    _client = MongoClient(
-        MONGO_URI,
-        maxPoolSize=20,
-        connectTimeoutMS=5000,
-    )
+    if not MONGO_URI:
+        logger.error("MONGO_URI is not set in environment variables.")
+        raise ValueError("MONGO_URI environment variable is required but was not found.")
 
-    _db = _client.test
+    try:
+        _client = MongoClient(
+            MONGO_URI,
+            maxPoolSize=20,
+            connectTimeoutMS=5000,
+            serverSelectionTimeoutMS=5000 
+        )
 
-    schemas = {
-        "annotation": Annotation(empty=True).schema,
-        "user": User(empty=True).schema,
-        "shared_annotation": SharedAnnotation(empty=True).schema,
-    }
+        # Trigger a call to check if connection is valid immediately
+        _client.admin.command('ping')
+        
+        _db = _client.get_default_database()
 
-    set_schemas(_db, schemas)
-    logger.info("MongoDB Connected!")
+        schemas = {
+            "annotation": Annotation(empty=True).schema,
+            "user": User(empty=True).schema,
+            "shared_annotation": SharedAnnotation(empty=True).schema,
+        }
+
+        set_schemas(_db, schemas)
+        logger.info("MongoDB Connected!")
+
+    except Exception as e:
+        logger.error(f"Failed to connect to MongoDB: {e}")
+        _client = None
+        _db = None
+        raise
 
     return _db
 

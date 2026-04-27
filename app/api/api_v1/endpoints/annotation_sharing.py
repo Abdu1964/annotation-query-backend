@@ -90,7 +90,7 @@ def share_annotation(data: Dict[str, Any] = Body(...), current_user_id: str = De
         })
 
         if not shared_annotation:
-            return jsonify({"error": "Failed to save shared annotation"}), 500
+            return JSONResponse(status_code=500, content={"error": "Failed to save shared annotation"})
 
         response = {
             'user_id': current_user_id,

@@ -29,7 +29,7 @@ class MorkCLIQueryGenerator(MorkQueryGenerator):
         return None
         
     def run_query(self, query, stop_event=None, species='human'):   
-        pattern_tuple, template_tuple, query_type = query
+        pattern_tuple, template_tuple, current_id = query # we current id is only getting used for the mork query generator not the cli
         
         pattern_str = " ".join(pattern_tuple)
         template_str = " ".join(template_tuple)

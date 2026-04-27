@@ -167,7 +167,7 @@ def summary_task(chord_results, annotation_id, request, all_status, summary=None
         logger.error("Cancelled generating result graph %s", e)
     except Exception as e:
         AnnotationStorageService.update(annotation_id, {"summary": summary, "status": TaskStatus.COMPLETE.value})
-        cache = get_annotation_redis(annotation_id)
+        cache = get_annotation_redis(annotation_id) or {}
         # 2. Update the Cache with Summary and Status
         cache['summary'] = 'Graph too big, could not summarize'
         cache['status'] = TaskStatus.COMPLETE.value # This marks the whole flow as done

@@ -66,14 +66,15 @@ def flatten_edges(value):
     label = value.get('output_label') or value.get('input_label') or 'unknown'
 
     return [
-        {'data': {
-            'source': src,
-            'target': tgt,
-            'possible_connection': [label]
+        {
+            'data': {
+                'source': src,
+                'target': tgt,
+                'possible_connection': [label]
             }
+        }
         for src in sources
         for tgt in targets
-        }
     ]
 
 def get_schema_by_source_logic(schema_manager, species, query_string):

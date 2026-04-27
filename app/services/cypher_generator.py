@@ -8,7 +8,6 @@ import glob
 import os
 from neo4j.graph import Node, Relationship
 from app.error import TaskCancelledException
-from app.error import TaskCancelledException
 
 load_dotenv()
 

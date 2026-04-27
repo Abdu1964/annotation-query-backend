@@ -20,7 +20,6 @@ class MorkQueryGenerator:
         self.server = self.connect()
         self.metta = MeTTa()
         self.current_id = None
-        self.current_id = None
         # self.clear_space()
         # self.load_dataset(dataset_path)
 
@@ -126,7 +125,6 @@ class MorkQueryGenerator:
             return metta_results
         else:
             raise ValueError("query must be a tuple or a list of tuples")
-            return metta_results
 
     def query_Generator(self, requests, node_map, limit=None, node_only=False):
         # this will do only transfomration
@@ -607,7 +605,6 @@ class MorkQueryGenerator:
                 target_type = target["type"]
 
                 pattern = f"({relationship} ({source_type} {source_id}) ({target_type} {target_id}))"
-                template = f"({self.current_id} ({relationship} ({source_type} {source_id}) ({target_type} {target_id})))"
                 template = f"({self.current_id} ({relationship} ({source_type} {source_id}) ({target_type} {target_id})))"
 
                 exec_list.append((pattern, template, 'query'))

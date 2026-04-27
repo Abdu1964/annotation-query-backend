@@ -177,7 +177,7 @@ class LLMHandler:
             title = self.model.generate(prompt)
             return title
         except Exception as e:
-            logger.error("Error generating title: ", {e})
+            logger.error("Error generating title: %s", e)
             if request is None or node_map is None:
                 return "Untitled"
             else:

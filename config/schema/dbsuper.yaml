@@ -25,7 +25,7 @@ relationships:
       biological_context: str
 
   overlaps with:
-    input_label: overlaps_with 
+    input_label: overlaps_with
     output_label: overlaps_with
     source: super_enhancer
     target: gene
