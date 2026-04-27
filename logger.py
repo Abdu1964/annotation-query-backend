@@ -45,13 +45,36 @@ def init_logging():
         '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
     )
     app_file_handler.setFormatter(formatter)
+    axiom_token = os.getenv("AXIOM_TOKEN")
+    client = None
+    axiom_handler = None
+    perf_handler = None
+    if axiom_token:
+        client = axiom_py.Client()
+        dataset_name = os.getenv("AXIOM_DATASET", "application-logs")  # configurable
+        axiom_handler = AxiomHandler(client, dataset_name)
+
+    # --- File Handler for Application Logs ---
+    app_file_handler = RotatingFileHandler(
+        os.path.join(log_dir, "application.log"),
+        maxBytes=10*1024*1024,  # 10MB
+        backupCount=5,
+        encoding='utf-8'
+    )
+    app_file_handler.setLevel(logging.INFO)
+    formatter = logging.Formatter(
+        '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    )
+    app_file_handler.setFormatter(formatter)
 
     root_logger = logging.getLogger()
     root_logger.setLevel(logging.INFO)
 
     # Add handlers
-    root_logger.addHandler(axiom_handler)
-    root_logger.addHandler(app_file_handler)
+    if axiom_handler is not None:
+        root_logger.addHandler(axiom_handler)
+    if app_file_handler is not None:
+        root_logger.addHandler(app_file_handler)
 
     # Optional: also log to console
     console_handler = logging.StreamHandler()
@@ -71,12 +94,27 @@ def init_logging():
     )
     perf_file_handler.setLevel(logging.INFO)
     perf_file_handler.setFormatter(formatter)
+    if client:
+        perf_handler = AxiomHandler(client, PERF_LOGS_DATASET)
+    
+    # --- File Handler for Performance Logs ---
+    perf_file_handler = RotatingFileHandler(
+        os.path.join(log_dir, "performance.log"),
+        maxBytes=10*1024*1024,
+        backupCount=5,
+        encoding='utf-8'
+    )
+    perf_file_handler.setLevel(logging.INFO)
+    perf_file_handler.setFormatter(formatter)
     
     # --- Performance logger ---
     perf_logger = logging.getLogger("performance")
     perf_logger.setLevel(logging.INFO)
-    perf_logger.addHandler(perf_handler)
-    perf_logger.addHandler(perf_file_handler)  # Add file handler
-    perf_logger.addHandler(console_handler)
+    if perf_handler is not None:
+        perf_logger.addHandler(perf_handler)
+    if perf_file_handler is not None:
+        perf_logger.addHandler(perf_file_handler)
+    if console_handler is not None:
+        perf_logger.addHandler(console_handler)
     
     return perf_logger

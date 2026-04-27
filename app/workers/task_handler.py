@@ -11,8 +11,6 @@ redis_client = get_redis_client()
 import logging
 import json
 import os
-import threading
-import time
 from app.lib import Graph
 from app.constants import TaskStatus
 from app.persistence import AnnotationStorageService
@@ -46,8 +44,11 @@ def update_task(annotation_id, task_type, status):
 def get_status(annotation_id):
     val = redis_state.hget(f"annotation:{annotation_id}", "status")
     return val.decode('utf-8') if val else None
+    val = redis_state.hget(f"annotation:{annotation_id}", "status")
+    return val.decode('utf-8') if val else None
 
 def set_status(annotation_id, status):
+    redis_state.hset(f"annotation:{annotation_id}", "status", status)
     redis_state.hset(f"annotation:{annotation_id}", "status", status)
 
 def get_annotation_redis(annotation_id):
@@ -57,6 +58,16 @@ def get_annotation_redis(annotation_id):
         return cache
     else:
         return None
+    
+def check_for_cancellation(annotation_id):
+    """
+    Checks for the cancellation flag. 
+    If cancelled, raises an exception to abort the flow.
+    """
+    current_status = get_status(annotation_id) 
+
+    if current_status is None or current_status == TaskStatus.CANCELLED.value:
+        raise TaskCancelledException()
     
 def check_for_cancellation(annotation_id):
     """
@@ -114,6 +125,45 @@ def summary_task(chord_results, annotation_id, request, all_status, summary=None
 
         check_for_cancellation(annotation_id)
 
+    
+def save_result_redis(annotation_id, result):
+    redis_client.setex(str(annotation_id), EXP, json.dumps(result))
+
+def generate_empty_label_count(requests):
+    update = {"node_count_by_label": [], "edge_count_by_label": []}
+    node_count_by_label = {}
+    edge_count_by_label = {}
+
+    for node in requests["nodes"]:
+        node_count_by_label[node["type"]] = 0
+
+    for edges in requests["predicates"]:
+        edge_count_by_label[edges["type"]] = 0
+
+    for key, value in node_count_by_label.items():
+        update["node_count_by_label"].append({key: value})
+
+    for key, value in edge_count_by_label.items():
+        update["edge_count_by_label"].append({key: value})
+
+    return update
+
+# --- TASKS ---
+
+@celery_app.task
+def summary_task(chord_results, annotation_id, request, all_status, summary=None):
+    try:
+        if get_status(annotation_id) == TaskStatus.FAILED.value:
+            summary = 'Failed to generate summary'
+            update_task(annotation_id, 'summary', 1)
+            set_status(annotation_id, TaskStatus.FAILED.value)
+            AnnotationStorageService.update(annotation_id, {'status': TaskStatus.FAILED.value, "summary": summary})
+            socket_event = {'status': TaskStatus.FAILED.value, 'update': {'summary': summary}, 'annotation_id': annotation_id}
+            redis_client.publish('socket_event', json.dumps(socket_event))
+            return
+
+        check_for_cancellation(annotation_id)
+
 
         if summary is not None:
             update_task(annotation_id, 'summary', 1)
@@ -122,7 +172,20 @@ def summary_task(chord_results, annotation_id, request, all_status, summary=None
             socket_event = {'status': TaskStatus.COMPLETE.value, 'update': {'summary': summary}, 'annotation_id': annotation_id}
             redis_client.publish('socket_event', json.dumps(socket_event))
             return
+        if summary is not None:
+            update_task(annotation_id, 'summary', 1)
+            set_status(annotation_id, TaskStatus.COMPLETE.value)
+            AnnotationStorageService.update(annotation_id, {'status': TaskStatus.COMPLETE.value, "summary": summary} )
+            socket_event = {'status': TaskStatus.COMPLETE.value, 'update': {'summary': summary}, 'annotation_id': annotation_id}
+            redis_client.publish('socket_event', json.dumps(socket_event))
+            return
 
+        check_for_cancellation(annotation_id)
+
+        meta_data = AnnotationStorageService.get_by_id(annotation_id)
+
+        # 1. Fetch Existing Cache (Populated by graph_task)
+        cache = get_annotation_redis(annotation_id)
         check_for_cancellation(annotation_id)
 
         meta_data = AnnotationStorageService.get_by_id(annotation_id)
@@ -139,6 +202,10 @@ def summary_task(chord_results, annotation_id, request, all_status, summary=None
             # If cache is missing for some reason, initialize it so we don't crash
             cache = {}
 
+        response['node_count'] = meta_data.node_count
+        response['edge_count'] = meta_data.edge_count
+        response['node_count_by_label'] = meta_data.node_count_by_label
+        response['edge_count_by_label'] = meta_data.edge_count_by_label
         response['node_count'] = meta_data.node_count
         response['edge_count'] = meta_data.edge_count
         response['node_count_by_label'] = meta_data.node_count_by_label
@@ -171,6 +238,10 @@ def summary_task(chord_results, annotation_id, request, all_status, summary=None
         redis_client.publish('socket_event', json.dumps(socket_event))
         redis_state.expire(f"annotation:{annotation_id}", 60)
         logging.error("Cancelled generating result graph %s", e)
+        socket_event = {'status': TaskStatus.CANCELLED.value, 'update': {'summary': 'Summary cancelled'}, 'annotation_id': annotation_id}
+        redis_client.publish('socket_event', json.dumps(socket_event))
+        redis_state.expire(f"annotation:{annotation_id}", 60)
+        logging.error("Cancelled generating result graph %s", e)
     except Exception as e:
         AnnotationStorageService.update(annotation_id, {"summary": summary, "status": TaskStatus.COMPLETE.value})
         cache = get_annotation_redis(annotation_id)
@@ -184,7 +255,15 @@ def summary_task(chord_results, annotation_id, request, all_status, summary=None
         socket_event = {'status': TaskStatus.COMPLETE.value, 'update': {'summary': 'Graph too big, could not summarize'}, 'annotation_id': annotation_id}
         redis_client.publish('socket_event', json.dumps(socket_event))
         redis_state.expire(f"annotation:{annotation_id}", 60)
+        socket_event = {'status': TaskStatus.COMPLETE.value, 'update': {'summary': 'Graph too big, could not summarize'}, 'annotation_id': annotation_id}
+        redis_client.publish('socket_event', json.dumps(socket_event))
+        redis_state.expire(f"annotation:{annotation_id}", 60)
 
+@celery_app.task
+def graph_task(query_code, annotation_id, requests, result_status, species, status=None):
+    try:
+        check_for_cancellation(annotation_id)
+        
 @celery_app.task
 def graph_task(query_code, annotation_id, requests, result_status, species, status=None):
     try:
@@ -193,11 +272,15 @@ def graph_task(query_code, annotation_id, requests, result_status, species, stat
         if get_status(annotation_id) == TaskStatus.CANCELLED.value:
             socket_event = {'status': TaskStatus.CANCELLED.value, 'update': {'graph': False}, 'annotation_id': annotation_id}
             redis_client.publish('socket_event', json.dumps(socket_event))
+            socket_event = {'status': TaskStatus.CANCELLED.value, 'update': {'graph': False}, 'annotation_id': annotation_id}
+            redis_client.publish('socket_event', json.dumps(socket_event))
             return
         
         stop_event = RedisStopEvent(annotation_id, redis_state)
 
         response_data = db_instance.run_query(query_code, stop_event, species)
+        
+        graph_components = {"nodes": requests['nodes'], "predicates": requests['predicates'], "properties": True}
         
         graph_components = {"nodes": requests['nodes'], "predicates": requests['predicates'], "properties": True}
         response = db_instance.parse_and_serialize(
@@ -258,8 +341,9 @@ def graph_task(query_code, annotation_id, requests, result_status, species, stat
             grouped_graph = graph.group_node_only(response, requests)
         else:
             grouped_graph = graph.group_graph(response)
-
-        file_path = Path("/app/public/graph") / f"{annotation_id}.json"
+            
+        base_graph_dir = Path(app.root_path) / "public" / "graph"
+        file_path = base_graph_dir / f"{annotation_id}.json"
         file_path.parent.mkdir(parents=True, exist_ok=True)
 
         with open(file_path, 'w') as file:
@@ -303,8 +387,13 @@ def graph_task(query_code, annotation_id, requests, result_status, species, stat
         socket_event = {'status': TaskStatus.CANCELLED.value, 'update': {'graph': False}, 'annotation_id': annotation_id}
         redis_client.publish('socket_event', json.dumps(socket_event))
         logging.error("Cancelling generating result graph %s", e)
+        socket_event = {'status': TaskStatus.CANCELLED.value, 'update': {'graph': False}, 'annotation_id': annotation_id}
+        redis_client.publish('socket_event', json.dumps(socket_event))
+        logging.error("Cancelling generating result graph %s", e)
     except Exception as e:
         set_status(annotation_id, TaskStatus.FAILED.value)
+        socket_event = {'status': TaskStatus.FAILED.value, 'update': {'graph': False}, 'annotation_id': annotation_id}
+        redis_client.publish('socket_event', json.dumps(socket_event))
         socket_event = {'status': TaskStatus.FAILED.value, 'update': {'graph': False}, 'annotation_id': annotation_id}
         redis_client.publish('socket_event', json.dumps(socket_event))
         AnnotationStorageService.update(annotation_id, {'status': TaskStatus.FAILED.value})
@@ -312,11 +401,18 @@ def graph_task(query_code, annotation_id, requests, result_status, species, stat
 
 @celery_app.task
 def total_count_task(count_query, annotation_id, requests, total_count_status, species, meta_data=None):
+@celery_app.task
+def total_count_task(count_query, annotation_id, requests, total_count_status, species, meta_data=None):
     if get_status(annotation_id) == TaskStatus.FAILED.value:
+        socket_event = {"status": TaskStatus.FAILED.value, "update": {"node_count": 0, "edge_count": 0}, 'annotation_id': annotation_id}
+        redis_client.publish('socket_event', json.dumps(socket_event))
         socket_event = {"status": TaskStatus.FAILED.value, "update": {"node_count": 0, "edge_count": 0}, 'annotation_id': annotation_id}
         redis_client.publish('socket_event', json.dumps(socket_event))
         return
 
+    if get_status(annotation_id) == TaskStatus.CANCELLED.value:
+        socket_event = {"status": TaskStatus.CANCELLED.value, "update": {"node_count": 0, "edge_count": 0}, 'annotation_id': annotation_id}
+        redis_client.publish('socket_event', json.dumps(socket_event))
     if get_status(annotation_id) == TaskStatus.CANCELLED.value:
         socket_event = {"status": TaskStatus.CANCELLED.value, "update": {"node_count": 0, "edge_count": 0}, 'annotation_id': annotation_id}
         redis_client.publish('socket_event', json.dumps(socket_event))
@@ -326,13 +422,18 @@ def total_count_task(count_query, annotation_id, requests, total_count_status, s
         update_task(annotation_id, 'total_count', 0)
         socket_event = {"status": TaskStatus.PENDING.value, "update": {"node_count": meta_data["node_count"], "edge_count": meta_data["edge_count"]}, 'annotation_id': annotation_id}
         redis_client.publish('socket_event', json.dumps(socket_event))
+        update_task(annotation_id, 'total_count', 0)
+        socket_event = {"status": TaskStatus.PENDING.value, "update": {"node_count": meta_data["node_count"], "edge_count": meta_data["edge_count"]}, 'annotation_id': annotation_id}
+        redis_client.publish('socket_event', json.dumps(socket_event))
         return
 
     try:
         total_count = db_instance.run_query(count_query, None, species)
         
-        if db_type == "mork":
+        if db_type in ["mork", "mork_cli"]:
             result = db_instance.parse_and_serialize(total_count, schema_manager.full_schema_representation, {
+                "nodes": requests.get("nodes", []),
+                "predicates": requests.get("predicates", []),
                 "properties": True
             }, 'graph')
 
@@ -343,8 +444,8 @@ def total_count_task(count_query, annotation_id, requests, total_count_status, s
             AnnotationStorageService.update(
                  annotation_id,
                  {
-                     "node_count": total_count["node_count"],
-                     "edge_count": total_count["edge_count"],
+                     "node_count": result["node_count"],
+                     "edge_count": result["edge_count"],
                      "status": TaskStatus.PENDING.value,
                  },
              )
@@ -358,12 +459,20 @@ def total_count_task(count_query, annotation_id, requests, total_count_status, s
             AnnotationStorageService.update(annotation_id, {"status": status, "node_count": 0, "edge_count": 0})
             socket_event = {"status": status, "update": {"node_count": 0, "edge_count": 0}, "annotation_id": annotation_id}
             redis_client.publish('socket_event', json.dumps(socket_event))
+            status = update_task(annotation_id, 'total_count', 1)
+            AnnotationStorageService.update(annotation_id, {"status": status, "node_count": 0, "edge_count": 0})
+            socket_event = {"status": status, "update": {"node_count": 0, "edge_count": 0}, "annotation_id": annotation_id}
+            redis_client.publish('socket_event', json.dumps(socket_event))
             return
 
         count_result = [total_count[0], {}]
         graph_components = {"nodes": requests["nodes"], "predicates": requests["predicates"], "properties": False}
         response = db_instance.parse_and_serialize(count_result, schema_manager.full_schema_representation, graph_components, "count")
+        graph_components = {"nodes": requests["nodes"], "predicates": requests["predicates"], "properties": False}
+        response = db_instance.parse_and_serialize(count_result, schema_manager.full_schema_representation, graph_components, "count")
 
+        update_task(annotation_id, 'total_count', 1)
+        status = TaskStatus.PENDING.value
         update_task(annotation_id, 'total_count', 1)
         status = TaskStatus.PENDING.value
         AnnotationStorageService.update(
@@ -379,7 +488,15 @@ def total_count_task(count_query, annotation_id, requests, total_count_status, s
         redis_client.publish('socket_event', json.dumps(socket_event))
 
     except TaskCancelledException as e:
+        socket_event = {"status": status, "update": {"node_count": response["node_count"], "edge_count": response["edge_count"]}, "annotation_id": annotation_id}
+        redis_client.publish('socket_event', json.dumps(socket_event))
+
+    except TaskCancelledException as e:
         set_status(annotation_id, TaskStatus.CANCELLED.value)
+        update_task(annotation_id, 'total_count', 1)
+        socket_event = {"status": TaskStatus.CANCELLED.value, "update": {"node_count": 0, "edge_count": 0}, "annotation_id": annotation_id}
+        redis_client.publish('socket_event', json.dumps(socket_event))
+        logging.error("Cancelled generating total count %s", e)
         update_task(annotation_id, 'total_count', 1)
         socket_event = {"status": TaskStatus.CANCELLED.value, "update": {"node_count": 0, "edge_count": 0}, "annotation_id": annotation_id}
         redis_client.publish('socket_event', json.dumps(socket_event))
@@ -390,12 +507,23 @@ def total_count_task(count_query, annotation_id, requests, total_count_status, s
         AnnotationStorageService.update(annotation_id, {"status": TaskStatus.FAILED.value, "node_count": 0, "edge_count": 0})
         socket_event = {"status": TaskStatus.FAILED.value, "update": {"node_count": 0, "edge_count": 0}, "annotation_id": annotation_id}
         redis_client.publish('socket_event', json.dumps(socket_event))
+        update_task(annotation_id, 'total_count', 0)
+        AnnotationStorageService.update(annotation_id, {"status": TaskStatus.FAILED.value, "node_count": 0, "edge_count": 0})
+        socket_event = {"status": TaskStatus.FAILED.value, "update": {"node_count": 0, "edge_count": 0}, "annotation_id": annotation_id}
+        redis_client.publish('socket_event', json.dumps(socket_event))
         logging.error("Error generating total count %s", e)
         traceback.print_exc()
 
 @celery_app.task
 def label_count_task(count_query, annotation_id, requests, count_label_status, species='human', meta_data=None):
+@celery_app.task
+def label_count_task(count_query, annotation_id, requests, count_label_status, species='human', meta_data=None):
     if get_status(annotation_id) == TaskStatus.FAILED.value:
+        update = generate_empty_label_count(requests)
+        status = TaskStatus.FAILED.value
+        update_task(annotation_id, 'label_count', 0)
+        socket_event = {"status": status, "update": update, "annotation_id": annotation_id}
+        redis_client.publish('socket_event', json.dumps(socket_event))
         update = generate_empty_label_count(requests)
         status = TaskStatus.FAILED.value
         update_task(annotation_id, 'label_count', 0)
@@ -409,6 +537,11 @@ def label_count_task(count_query, annotation_id, requests, count_label_status, s
         update_task(annotation_id, 'label_count', 1)
         socket_event = {"status": TaskStatus.CANCELLED.value, "update": {"node_count_by_label": [], "edge_count_by_label": []}, "annotation_id": annotation_id}
         redis_client.publish('socket_event', json.dumps(socket_event))
+        update = generate_empty_label_count(requests)
+        status = TaskStatus.CANCELLED.value 
+        update_task(annotation_id, 'label_count', 1)
+        socket_event = {"status": TaskStatus.CANCELLED.value, "update": {"node_count_by_label": [], "edge_count_by_label": []}, "annotation_id": annotation_id}
+        redis_client.publish('socket_event', json.dumps(socket_event))
         return
 
     try:
@@ -417,11 +550,19 @@ def label_count_task(count_query, annotation_id, requests, count_label_status, s
             update_task(annotation_id, 'label_count', 1)
             socket_event = {"status": status, "update": {"node_count_by_label": meta_data["node_count_by_label"], "edge_count_by_label": meta_data["edge_count_by_label"]}, "annotation_id": annotation_id}
             redis_client.publish('socket_event', json.dumps(socket_event))
+            status = TaskStatus.PENDING.value
+            update_task(annotation_id, 'label_count', 1)
+            socket_event = {"status": status, "update": {"node_count_by_label": meta_data["node_count_by_label"], "edge_count_by_label": meta_data["edge_count_by_label"]}, "annotation_id": annotation_id}
+            redis_client.publish('socket_event', json.dumps(socket_event))
             return
 
-        if db_type == "mork":
+        if db_type in ["mork", "mork_cli"]:
             count_result = db_instance.run_query(count_query, None, species)
-            result = db_instance.parse_and_serialize(count_result, schema_manager.full_schema_representation, {"properties": True}, 'graph')
+            result = db_instance.parse_and_serialize(count_result, schema_manager.full_schema_representation, {
+                "nodes": requests.get("nodes", []),
+                "predicates": requests.get("predicates", []),
+                "properties": True
+            }, 'graph')
 
             count_result = [{}, result]
             total_count = db_instance.parse_and_serialize(count_result, schema_manager.full_schema_representation, {}, 'count')
@@ -431,8 +572,8 @@ def label_count_task(count_query, annotation_id, requests, count_label_status, s
             AnnotationStorageService.update(
                  annotation_id,
                  {
-                     "node_count_by_label": total_count["node_count_by_label"],
-                     "edge_count_by_label": total_count["edge_count_by_label"],
+                     "node_count_by_label": result["node_count_by_label"],
+                     "edge_count_by_label": result["edge_count_by_label"],
                      "status": status,
                  },
              )
@@ -442,7 +583,11 @@ def label_count_task(count_query, annotation_id, requests, count_label_status, s
             return
 
         label_count = db_instance.run_query(count_query, None, species)
+        label_count = db_instance.run_query(count_query, None, species)
         count_result = [{}, label_count[0]]
+        graph_components = {"nodes": requests["nodes"], "predicates": requests["predicates"], "properties": False}
+        response = db_instance.parse_and_serialize(count_result, schema_manager.full_schema_representation, graph_components, "count")
+        
         graph_components = {"nodes": requests["nodes"], "predicates": requests["predicates"], "properties": False}
         response = db_instance.parse_and_serialize(count_result, schema_manager.full_schema_representation, graph_components, "count")
         
@@ -460,7 +605,18 @@ def label_count_task(count_query, annotation_id, requests, count_label_status, s
         redis_client.publish('socket_event', json.dumps(socket_event))
         
     except TaskCancelledException as e:
+        update_task(annotation_id, 'label_count', 1)
+        status = TaskStatus.PENDING.value
+        socket_event = {"status": status, "update": {"node_count_by_label": response["node_count_by_label"], "edge_count_by_label": response["edge_count_by_label"]}, "annotation_id": annotation_id}
+        redis_client.publish('socket_event', json.dumps(socket_event))
+        
+    except TaskCancelledException as e:
         set_status(annotation_id, TaskStatus.CANCELLED.value)
+        update_task(annotation_id, 'label_count', 1)
+        update = generate_empty_label_count(requests)
+        socket_event = {"status": TaskStatus.CANCELLED.value, "update": {"node_count_by_label": [], "edge_count_by_label": []}, "annotation_id": annotation_id}
+        redis_client.publish('socket_event', json.dumps(socket_event))
+        logging.error("Cancelling generating result graph %s", e)
         update_task(annotation_id, 'label_count', 1)
         update = generate_empty_label_count(requests)
         socket_event = {"status": TaskStatus.CANCELLED.value, "update": {"node_count_by_label": [], "edge_count_by_label": []}, "annotation_id": annotation_id}
@@ -480,10 +636,13 @@ def label_count_task(count_query, annotation_id, requests, count_label_status, s
         )
         socket_event = {"status": TaskStatus.FAILED.value, "update": update, "annotation_id": annotation_id}
         redis_client.publish('socket_event', json.dumps(socket_event))
+        socket_event = {"status": TaskStatus.FAILED.value, "update": update, "annotation_id": annotation_id}
+        redis_client.publish('socket_event', json.dumps(socket_event))
         logging.error("Error generating label count %s", e)
         traceback.print_exc()
 
 def start_thread(annotation_id, args):
+    annotation_id = str(annotation_id)
     annotation_id = str(annotation_id)
     all_status = args['all_status']
     find_query = args['query'][0]

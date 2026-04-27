@@ -23,6 +23,7 @@ class Annotation(Schema):
     created_at = None
     updated_at = None
     data_source = None
+    files = None
     species = None
     path_url = None
 

@@ -5,6 +5,7 @@ from pymongoose.methods import set_schemas
 from app.models.annotation import Annotation
 from app.models.user import User
 from app.models.shared_annotation import SharedAnnotation
+from dotenv import load_dotenv
 
 MONGO_URI = os.environ.get("MONGO_URI")
 

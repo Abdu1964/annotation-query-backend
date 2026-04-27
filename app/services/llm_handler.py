@@ -9,7 +9,6 @@ load_dotenv()
 class LLMHandler:
     def __init__(self):
         model_type = os.getenv('LLM_MODEL')
-        # self.t5model = T5Model()
         
         # 1. NODE MAPPINGS (Based on your "Named Things" schema)
         # We look for these properties in order. If found, we use them as the name.
@@ -255,6 +254,7 @@ class LLMHandler:
     def generate_title_no_llm(self, req, node_map):
         predicates = req.get('predicates', [])
 
+
         if not predicates:
             # List items, adding "Unnamed" if generic
             items = []
@@ -316,5 +316,5 @@ class LLMHandler:
             summary = summarizer.summary(graph, request, user_query, graph_id, summary)
             return summary
         except Exception as e:
-            logging.error("Error generating summary: ", e)
+            logging.error(f"Error generating summary: {e}")
             return "No summary available"

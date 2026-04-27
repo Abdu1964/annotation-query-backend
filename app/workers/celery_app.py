@@ -17,7 +17,7 @@ celery_app = Celery(
 celery_app.conf.update(
     task_serializer='pickle',
     result_serializer='pickle',
-    accept_content=['pickle', 'json'], # Accept both to be safe during transition
+    accept_content=['pickle', 'json'],
     result_expires=3600,
 )
 

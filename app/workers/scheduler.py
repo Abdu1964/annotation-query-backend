@@ -17,7 +17,6 @@ port = parsed.port or 6379
 password = parsed.password
 
 file_lock = threading.Lock()
-db = CypherQueryGenerator('/data')
 
 def update_total_entity_count():
     try:
@@ -147,7 +146,7 @@ def update_json():
                           "endpoint": "background worker",
                           "exception": f"Error: Could not decode JSON from '{graph_info_path}'. Check file format."}), exc_info=True)
 
-def MetaDataUpdateWorker():
+def metadata_update_worker():
     jobstores = {
         'default': RedisJobStore(host=host, port=port, password=password),
     }

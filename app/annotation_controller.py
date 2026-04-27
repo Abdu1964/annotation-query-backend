@@ -26,6 +26,8 @@ def handle_client_request(query, request, current_user_id, node_types, species, 
     annotation_id = request.get('annotation_id', None)
     
     # --- 1. Check for existing Annotation ---
+    
+    # --- 1. Check for existing Annotation ---
     if annotation_id:
         existing_query = AnnotationStorageService.get_user_query(
             annotation_id, str(current_user_id), query[0])
@@ -49,6 +51,7 @@ def handle_client_request(query, request, current_user_id, node_types, species, 
         }
         AnnotationStorageService.update(
             annotation_id, {"status": TaskStatus.PENDING.value, "updated_at": datetime.datetime.now()})
+        
         
         reset_status(annotation_id)
         # Initialize Redis keys for progress tracking (0/1)
@@ -84,7 +87,21 @@ def handle_client_request(query, request, current_user_id, node_types, species, 
 
         annotation_id = AnnotationStorageService.save(annotation)
         init_request_state(annotation_id)
+        init_request_state(annotation_id)
 
+        args = {
+            'all_status': {
+                'result_done': 0, 
+                'total_count_done': 0,
+                'label_count_done': 0
+            }, 
+            'query': query, 
+            'request': request,
+            'summary': None, 
+            'meta_data': None, 
+            'data_source': data_source, 
+            'species': species
+        }
         args = {
             'all_status': {
                 'result_done': 0, 
@@ -109,6 +126,10 @@ def handle_client_request(query, request, current_user_id, node_types, species, 
         if 'annotation_id' in request:
             del request['annotation_id']
             
+        # Check if annotation_id needs to be removed from request dict (cleanup)
+        if 'annotation_id' in request:
+            del request['annotation_id']
+            
         annotation = {"query": str(query[0]), "request": request,
                       "title": title, "node_types": node_types,
                       'status': TaskStatus.PENDING.value, 'node_count': None,
@@ -118,7 +139,20 @@ def handle_client_request(query, request, current_user_id, node_types, species, 
         AnnotationStorageService.update(annotation_id, annotation)
         reset_task(annotation_id)
         init_request_state(annotation_id)
+        init_request_state(annotation_id)
 
+        args = {
+            'all_status': {
+                'result_done': 0, 
+                'total_count_done': 0,
+                'label_count_done': 0
+            }, 
+            'query': query, 
+            'request': request,
+            'summary': None, 
+            'meta_data': None, 
+            'species': species
+        }
         args = {
             'all_status': {
                 'result_done': 0, 
@@ -182,6 +216,8 @@ def requery(annotation_id, query, request, species='human'):
     """
     AnnotationStorageService.update(
         annotation_id, {"status": TaskStatus.PENDING.value})
+    
+    # We reset redis status for this task
     
     # We reset redis status for this task
     reset_status(annotation_id)
