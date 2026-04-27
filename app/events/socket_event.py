@@ -3,21 +3,22 @@ from app.socketio.server import sio
 from app.workers.task_handler import get_annotation_redis
 from app.constants import TaskStatus
 
+logger = logging.getLogger(__name__)
+
 @sio.event
 async def connect(sid, environ, auth=None):
-    logging.info(f"User connected with SID: {sid}")
+    logger.info(f"User connected with SID: {sid}")
     await sio.emit('message', 'Connected to server', to=sid)
 
 @sio.event
 async def disconnect(sid):
-    logging.info(f"User disconnected: {sid}")
+    logger.info(f"User disconnected: {sid}")
 
 @sio.on('join')
 async def on_join(sid, data):
     room = data['room']
     await sio.enter_room(sid, room)
-    logging.info(f"User join a room with {room}")
-    # send(f'connected to {room}', to=room)
+    logger.info(f"User join a room with {room}")
     cache = get_annotation_redis(room)
 
     if cache is not None:

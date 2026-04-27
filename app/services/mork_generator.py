@@ -5,10 +5,12 @@ import json
 from pathlib import Path
 from hyperon import MeTTa
 from .metta import metta_seralizer
-from app import perf_logger
 from dotenv import load_dotenv
 import time
 import datetime
+import logging
+
+logger = logging.getLogger(__name__)
 
 load_dotenv()
 
@@ -46,7 +48,7 @@ class MorkQueryGenerator:
                 try:
                     annotation.sexpr_import_(file_url).block()
                 except Exception as e:
-                    print(f"Error loading data: {e}")
+                    logger.error(f"Error loading data: {e}")
 
     def generate_id(self):
         import uuid
@@ -85,42 +87,22 @@ class MorkQueryGenerator:
         return node_representation
 
     def run_query(self, query, stop_event=None, species='human'):
-        print("Query:", query, flush=True)
         if isinstance(query, tuple) and len(query) == 4:
             start_time = time.time()
             timestamp = datetime.datetime.utcnow().isoformat()
             pattern, template, type, current_id = query
 
-            print("Pattern: ", pattern)
-            print("Template: ", template)
-            print("CURRENT ID: ", current_id)
             with self.server.work_at("annotation") as annotation:
                 annotation.transform(pattern, template).block()
                 result = annotation.download(f"({current_id} $x)", "($x)")
                 with annotation.work_at(f"{current_id}") as tmp:
                     tmp.clear()
-            print("********")
-            print(result)
-            print("********")
+
             metta_result = self.metta.parse_all(result.data)
-            # Success log
-            duration = (time.time() - start_time) * 1000 # in ms
-            # perf_logger.info(
-            #     "Query executed",
-            #     extra={
-            #         "query": str(query),
-            #         "timestamp": timestamp,
-            #         "duration_ms": duration,
-            #         "species": species,
-            #         "status": "success"
-            #     }
-            # )
             return [metta_result]
         elif isinstance(query, list):
             queries = query
             metta_results = []
-            start_time = time.time()
-            timestamp = datetime.datetime.utcnow().isoformat()
 
             for pattern, template, _ in queries:
                 # Ensure pattern/template are tuples
@@ -138,28 +120,13 @@ class MorkQueryGenerator:
                     metta_result = self.metta.parse_all(result.data)
                     metta_results.extend(metta_result)
                 except Exception as e:
-                    print("Query failed:", pattern, template)
-                    print(e)
-
-            duration = (time.time() - start_time) * 1000  # in ms
-
-            # perf_logger.info(
-            #     "Query executed",
-            #     extra={
-            #         "query": str(query),
-            #         "timestamp": timestamp,
-            #         "duration_ms": duration,
-            #         "species": species,
-            #         "status": "success"
-            #     }
-            # )
+                    logger.error(f"Query failed: {pattern}, {template}")
+                    logger.error(f"Error: {e}")
 
             return metta_results
         else:
             raise ValueError("query must be a tuple or a list of tuples")
             return metta_results
-        else:
-            raise ValueError("query must be a tuple or a list of tuples")
 
     def query_Generator(self, requests, node_map, limit=None, node_only=False):
         # this will do only transfomration
@@ -170,7 +137,6 @@ class MorkQueryGenerator:
         template = []
 
         node_representation = ''
-        self.current_id = self.generate_id()
         self.current_id = self.generate_id()
 
         if "predicates" in requests and len(requests["predicates"]) > 0:
@@ -199,7 +165,6 @@ class MorkQueryGenerator:
                 if node["id"]:
                     essemble_id = node["id"]
                     pattern.append(f'({node_type} {essemble_id})')
-                    template.append(f'({self.current_id} ({node_type} {essemble_id}))')
                     template.append(f'({self.current_id} ({node_type} {essemble_id}))')
                 else:
                     if len(node["properties"]) == 0:
@@ -539,7 +504,11 @@ class MorkQueryGenerator:
         total_edges = 0
 
         if len(node_and_edge_count) != 0:
-            if hasattr(node_and_edge_count[0], 'get_object'):
+            # handle already-parsed dict from mork graph result
+            if isinstance(node_and_edge_count, dict):
+                total_nodes = node_and_edge_count.get('node_count', 0)
+                total_edges = node_and_edge_count.get('edge_count', 0)
+            elif hasattr(node_and_edge_count[0], 'get_object'):
                 val = node_and_edge_count[0].get_object().value
                 if isinstance(val, dict):
                     total_nodes = val.get('total_nodes', 0)
@@ -553,7 +522,13 @@ class MorkQueryGenerator:
                         total_edges = item[1]
 
         if len(count_by_label) != 0:
-            if hasattr(count_by_label[0], 'get_object'):
+            #  handle already-parsed dict from mork graph result
+            if isinstance(count_by_label, dict):
+                for item in count_by_label.get('node_count_by_label', []):
+                    node_label_count[item['label']] = {'count': item['count']}
+                for item in count_by_label.get('edge_count_by_label', []):
+                    edge_label_count[item['label']] = {'count': item['count']}
+            elif hasattr(count_by_label[0], 'get_object'):
                 val = count_by_label[0].get_object().value
                 if isinstance(val, dict):
                     node_label_count = val.get('node_label_count', {})
@@ -563,14 +538,10 @@ class MorkQueryGenerator:
                 for item in tuples:
                     if item[0] == 'node_label_count' and len(item) > 2:
                         for i in range(1, len(item), 2):
-                            label = item[i]
-                            count = item[i+1]
-                            node_label_count[label] = {"count": count}
+                            node_label_count[item[i]] = {"count": item[i+1]}
                     elif item[0] == 'edge_label_count' and len(item) > 2:
                         for i in range(1, len(item), 2):
-                            label = item[i]
-                            count = item[i+1]
-                            edge_label_count[label] = {"count": count}
+                            edge_label_count[item[i]] = {"count": item[i+1]}
 
         node_count_by_label = [
             {'label': key, 'count': value['count']} for key, value in node_label_count.items()

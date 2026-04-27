@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status, Body
 from fastapi.responses import JSONResponse, StreamingResponse
 from typing import List, Optional, Dict, Any
 import json
+import logging
 from app.api.deps import get_current_user, get_schema_manager
 from app.services.schema_data import SchemaManager
 from app.persistence import UserStorageService
@@ -12,6 +13,8 @@ from app.lib import Graph
 from app.persistence import AnnotationStorageService
 from app.lib.utils import convert_to_tsv
 import datetime
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -30,8 +33,6 @@ def get_nodes(
     user = UserStorageService.get(current_user_id)
     species = user.species if user else 'human'
     nodes = schema_manager.get_nodes()
-    # Ensure species exists in nodes, otherwise default or error?
-    # Original code: nodes = nodes[species]
     return nodes.get(species, [])
 
 @router.get("/edges")
@@ -75,17 +76,12 @@ def flatten_edges(value):
         }
     ]
 
-# Refactored schema_by_source logic as a helper or service function
 def get_schema_by_source_logic(schema_manager, species, query_string):
     response = {'schema': {'nodes': [], 'edges': []}}
 
     if species == 'human':
         schema = schema_manager.schmea_representation
     else:
-        # Typo from original code preserved/fixed: fly_schema_represetnation -> fly_schema_representation?
-        # Checked __init__.py line 85-88: calls it fly_schema_config_path
-        # But SchemaManager class def not fully visible. Assuming attribute names match original routes.py usage.
-        # routes.py line 109: schema_manager.fly_schema_represetnation
         schema = getattr(schema_manager, 'fly_schema_represetnation', {})
 
     if query_string == 'all' and species == 'fly':
@@ -115,7 +111,7 @@ def get_schema_by_source_logic(schema_manager, species, query_string):
 
     for schema_type in query_list:
         if schema_type == 'all': 
-            continue # Already handled? Or logic differs. Original code: for schema_type in query_string (which passes a list?)
+            continue
         
         source = schema_type.upper()
         sub_schema = schema.get(source, None)
@@ -133,11 +129,6 @@ def get_schema_by_source_logic(schema_manager, species, query_string):
             }}
             response['schema']['edges'].append(edge_data)
             
-            # Logic for adding nodes... (simplified for brevity, matching routes.py)
-            # This logic is quite complex to copy-paste exactly without SchemaManager definition.
-            # Ideally this logic belongs in SchemaManager or a service.
-            
-            # Replicating critical parts:
             if 'nodes' in schema[source] and edge['source'] in schema[source]['nodes']:
                  node_to_add_src = schema[source]['nodes'][edge['source']]
                  node_label_src = node_to_add_src['label']
@@ -215,13 +206,10 @@ def get_schema_by_data_source(
     data_source: List[str] = Query(default=[]),
     schema_manager: SchemaManager = Depends(get_schema_manager)
 ):
-    # original: data_source = request.args.getlist('data_source')
-    # FastAPI handles list query params nicely
     
     if len(data_source) == 1 and data_source[0] == 'flyall':
-            data_source = 'all' # treat as string? Logic in routes.py checks string vs list
-            # routes.py: schema_by_source(species, 'all') pass string 'all' for flyall
-    
+            data_source = 'all'
+
     schemas = get_schema_by_source_logic(schema_manager, species, data_source)
     
     response = {'nodes': [], 'edges': []}
@@ -267,7 +255,6 @@ async def update_settings(
     data: Dict[str, Any] = Body(...),
     current_user_id: str = Depends(get_current_user)
 ):
-    # Manual extraction (replacing request.get_json())
     data_source = data.get('sources')
     species = data.get('species', 'human')
 
@@ -333,12 +320,12 @@ async def update_settings(
             {'data_source': data_source, 'species': species}
         )
 
-        # logger.info(json.dumps({
-        #     "status": "success", 
-        #     "method": "POST",
-        #     "timestamp": datetime.datetime.now().isoformat(),
-        #     "endpoint": "/save-preference"
-        # }))
+        logger.info(json.dumps({
+            "status": "success", 
+            "method": "POST",
+            "timestamp": datetime.datetime.now().isoformat(),
+            "endpoint": "/save-preference"
+        }))
 
         return {
             'message': 'Data source updated successfully',
@@ -346,13 +333,13 @@ async def update_settings(
         }
 
     except Exception as e:
-        # logger.error(json.dumps({
-        #     "status": "error", 
-        #     "method": "POST",
-        #     "timestamp": datetime.datetime.now().isoformat(),
-        #     "endpoint": "/save-preference",
-        #     "exception": str(e)
-        # }), exc_info=True)
+        logger.error(json.dumps({
+            "status": "error", 
+            "method": "POST",
+            "timestamp": datetime.datetime.now().isoformat(),
+            "endpoint": "/save-preference",
+            "exception": str(e)
+        }), exc_info=True)
         
         # Consistent error response matching your preference route
         return JSONResponse(
@@ -383,16 +370,16 @@ def get_saved_preferences(current_user_id: str = Depends(get_current_user)):
             'source': data_source
         }
         
-        # logging.info(json.dumps({"status": "success", "method": "GET",
-        #                           "timestamp":  datetime.datetime.now().isoformat(),
-        #                           "endpoint": "/saved-preference"}))
-# 
+        logger.info(json.dumps({"status": "success", "method": "GET",
+                                  "timestamp":  datetime.datetime.now().isoformat(),
+                                  "endpoint": "/saved-preference"}))
+
         return response_data
     except Exception as e:
-        # logging.error(json.dumps({"status": "error", "method": "GET",
-        #                           "timestamp":  datetime.datetime.now().isoformat(),
-        #                           "endpoint": "/saved-preference",
-        #                           "exception": str(e)}), exc_info=True)
+        logger.error(json.dumps({"status": "error", "method": "GET",
+                                  "timestamp":  datetime.datetime.now().isoformat(),
+                                  "endpoint": "/saved-preference",
+                                  "exception": str(e)}), exc_info=True)
         error_response = {
         "status": "error",
         "message": "An internal server error occurred. Please try again later.",
@@ -431,13 +418,12 @@ async def download_tsv(id: str, current_user_id: str = Depends(get_current_user)
         file_obj = convert_to_tsv(new_graph)
         
         if file_obj:
-            # logging.error(json.dumps({"status": "success", "method": "GET",
-            #           "timestamp":  datetime.datetime.now().isoformat(),
-            #           "endpoint": "/annotation/<id>/download-tsv"}))
+            logger.error(json.dumps({"status": "success", "method": "GET",
+                      "timestamp":  datetime.datetime.now().isoformat(),
+                      "endpoint": "/annotation/<id>/download-tsv"}))
             # Seek to start of stream if it's a file-like object
             file_obj.seek(0)
             
-            # FastAPI equivalent of send_file for in-memory streams
             return StreamingResponse(
                 file_obj,
                 media_type='application/zip',
@@ -446,7 +432,7 @@ async def download_tsv(id: str, current_user_id: str = Depends(get_current_user)
                 }
             )
         else:
-            logging.error(json.dumps({
+            logger.error(json.dumps({
                 "status": "error", 
                 "method": "GET",
                 "timestamp": datetime.datetime.now().isoformat(),
@@ -459,14 +445,13 @@ async def download_tsv(id: str, current_user_id: str = Depends(get_current_user)
             )
         
     except Exception as e:
-        print(e)
-        # logging.error(json.dumps({
-        #     "status": "error", 
-        #     "method": "GET",
-        #     "timestamp": datetime.datetime.now().isoformat(),
-        #     "endpoint": f"/annotation/{id}/download-tsv",
-        #     "exception": str(e)
-        # }), exc_info=True)
+        logger.error(json.dumps({
+            "status": "error", 
+            "method": "GET",
+            "timestamp": datetime.datetime.now().isoformat(),
+            "endpoint": f"/annotation/{id}/download-tsv",
+            "exception": str(e)
+        }), exc_info=True)
 
         return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

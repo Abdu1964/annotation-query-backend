@@ -32,12 +32,10 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token", auto_error=False)
 def get_redis_client() -> redis.Redis:
     """
     Returns a singleton Redis client. 
-    Using 'return' instead of 'yield' prevents 'generator object' errors in Celery.
     """
     global _redis_client
     if _redis_client is None:
         try:
-            # decode_responses=True converts bytes to strings automatically
             _redis_client = redis.from_url(
                 settings.REDIS_URL, 
                 decode_responses=True

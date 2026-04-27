@@ -7,6 +7,8 @@ import os
 # Load environment variables from .env file
 load_dotenv()
 
+logger = logging.getLogger(__name__)
+
 # JWT Secret Key
 JWT_SECRET = os.getenv("JWT_SECRET")
 
@@ -25,7 +27,7 @@ def token_required(f) -> any:
             data = jwt.decode(token, JWT_SECRET, algorithms=["HS256"])
             current_user_id = data['user_id']
         except Exception as e:
-            logging.error(f"Error docodcing token: {e}")
+            logger.error(f"Error docodcing token: {e}")
             return {'message': 'Token is invalid!'}, 403
 
         # Pass current_user_id and maintain other args
@@ -35,19 +37,19 @@ def token_required(f) -> any:
 def socket_token_required(f):
     @wraps(f)
     def decorated(*args, **kwargs):
-        logging.info(f"Checking token for {f.__name__}")
+        logger.info(f"Checking token for {f.__name__}")
         try:
             # Get auth token from query parameters (most common for SocketIO)
             auth_header = request.args.get('token')
-            logging.info(f"Token from args: {auth_header[:10] if auth_header else None}")
+            logger.info(f"Token from args: {auth_header[:10] if auth_header else None}")
             
             # Try to get from headers as fallback
             if not auth_header:
                 auth_header = request.headers.get('Authorization')
-                logging.info(f"Token from headers: {auth_header[:10] if auth_header else None}")
+                logger.info(f"Token from headers: {auth_header[:10] if auth_header else None}")
             
             if not auth_header:
-                logging.error("No token found")
+                logger.error("No token found")
                 disconnect()
                 return False
             
@@ -60,22 +62,22 @@ def socket_token_required(f):
             try:
                 data = jwt.decode(token, JWT_SECRET, algorithms=["HS256"])
                 current_user_id = data['user_id']
-                logging.info(f"Token decoded successfully for user: {current_user_id}")
+                logger.info(f"Token decoded successfully for user: {current_user_id}")
                 
                 # Always pass user_id as first argument
                 return f(current_user_id, *args, **kwargs)
                 
             except jwt.InvalidTokenError as e:
-                logging.error(f"Token decode error: {e}")
+                logger.error(f"Token decode error: {e}")
                 disconnect()
                 return False
             except Exception as jwt_error:
-                logging.error(f"JWT processing error: {jwt_error}")
+                logger.error(f"JWT processing error: {jwt_error}")
                 disconnect()
                 return False
                 
         except Exception as e:
-            logging.error(f"Socket auth error in {f.__name__}: {str(e)}")
+            logger.error(f"Socket auth error in {f.__name__}: {str(e)}")
             disconnect()
             return False
             

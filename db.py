@@ -7,6 +7,9 @@ from app.models.user import User
 from app.models.shared_annotation import SharedAnnotation
 from dotenv import load_dotenv
 
+
+logger = logging.getLogger(__name__)
+
 MONGO_URI = os.environ.get("MONGO_URI")
 
 _client = None
@@ -33,7 +36,7 @@ def mongo_init():
     }
 
     set_schemas(_db, schemas)
-    logging.info("MongoDB Connected!")
+    logger.info("MongoDB Connected!")
 
     return _db
 

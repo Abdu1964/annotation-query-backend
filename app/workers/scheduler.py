@@ -10,6 +10,8 @@ import threading
 from urllib.parse import urlparse
 from app.core.config import settings
 
+logger = logging.getLogger(__name__)
+
 REDIS_URL = settings.REDIS_URL
 parsed = urlparse(REDIS_URL)
 host = parsed.hostname or 'localhost'
@@ -18,13 +20,14 @@ password = parsed.password
 
 file_lock = threading.Lock()
 
+
 def update_total_entity_count():
     try:
         total_entity_query = db.get_total_entity_query()
         total_entity_count = db.run_query(total_entity_query)
         return total_entity_count
     except Exception as e:
-        logging.error(json.dumps({"status": "error", "method": "background worker",
+        logger.error(json.dumps({"status": "error", "method": "background worker",
                                   "timestamp":  datetime.datetime.now().isoformat(),
                                   "endpoint": "background worker",
                                   "exception": str(e)}), exc_info=True)
@@ -36,7 +39,7 @@ def update_total_connection_count():
         total_connection_count = db.run_query(total_connection_query)
         return total_connection_count
     except Exception as e:
-        logging.error(json.dumps({"status": "error", "method": "background worker",
+        logger.error(json.dumps({"status": "error", "method": "background worker",
                                   "timestamp":  datetime.datetime.now().isoformat(),
                                   "endpoint": "background worker",
                                   "exception": str(e)}), exc_info=True)
@@ -48,7 +51,7 @@ def update_total_node_count_by_label():
         total_node_count_by_label = db.run_query(total_node_count_by_label_query)
         return total_node_count_by_label
     except Exception as e:
-        logging.error(json.dumps({"status": "error", "method": "background worker",
+        logger.error(json.dumps({"status": "error", "method": "background worker",
                                   "timestamp":  datetime.datetime.now().isoformat(),
                                   "endpoint": "background worker",
                                   "exception": str(e)}), exc_info=True)
@@ -60,7 +63,7 @@ def update_total_connection_count_by_label():
         total_connection_count_by_label = db.run_query(total_connection_count_by_label_query)
         return total_connection_count_by_label
     except Exception as e:
-        logging.error(json.dumps({"status": "error", "method": "background worker",
+        logger.error(json.dumps({"status": "error", "method": "background worker",
                                   "timestamp":  datetime.datetime.now().isoformat(),
                                   "endpoint": "background worker",
                                   "exception": str(e)}), exc_info=True)
@@ -72,7 +75,7 @@ def update_total_connection_count_by_label_source_target():
         total_connection_count_by_label = db.run_query(total_connection_count_by_label_query)
         return total_connection_count_by_label
     except Exception as e:
-        logging.error(json.dumps({"status": "error", "method": "background worker",
+        logger.error(json.dumps({"status": "error", "method": "background worker",
                                   "timestamp":  datetime.datetime.now().isoformat(),
                                   "endpoint": "background worker",
                                   "exception": str(e)}), exc_info=True)
@@ -132,7 +135,7 @@ def update_json():
             with open(graph_info_path, 'w') as json_file:
                 json.dump(old_data, json_file, ensure_ascii=False, indent=4)
 
-        logging.info(json.dumps({
+        logger.info(json.dumps({
             "status": "success", "method": "background worker",
             "timestamp": datetime.datetime.now().isoformat(),
         }))
@@ -141,7 +144,7 @@ def update_json():
             with open(graph_info_path, 'w') as json_file:
                 json.dump(data, json_file, ensure_ascii=False, indent=4)
     except json.JSONDecodeError:
-        logging.error(json.dumps({"status": "error", "method": "backgroud worker",
+        logger.error(json.dumps({"status": "error", "method": "backgroud worker",
                           "timestamp":  datetime.datetime.now().isoformat(),
                           "endpoint": "background worker",
                           "exception": f"Error: Could not decode JSON from '{graph_info_path}'. Check file format."}), exc_info=True)
@@ -175,8 +178,8 @@ def metadata_update_worker():
         day_of_week='sun',
         hour=0,
         minute=0,
-        id='update_json_job',          # fixed job ID
-        replace_existing=True          # replace any existing job with this ID
+        id='update_json_job',  
+        replace_existing=True
     )
 
     scheduler.start()

@@ -2,11 +2,15 @@ from fastapi import APIRouter, Depends, HTTPException, Body, status, Query as FQ
 from fastapi.responses import JSONResponse
 from typing import Dict, Any, Optional, List
 import json
+import logging
+import datetime
 from app.api.deps import get_current_user
 from app.persistence import AnnotationStorageService, SharedAnnotationStorageService
 from app.constants import ROLES
 import jwt
 import os
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -99,7 +103,7 @@ def share_annotation(data: Dict[str, Any] = Body(...), current_user_id: str = De
 
         return response
     except Exception as e:
-        # logging.error(f"Error sharing annotation: {e}")
+        logger.error(f"Error sharing annotation: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.delete("/{id}")
@@ -129,5 +133,5 @@ def revoke_shared_annotation(id: str, current_user_id: str = Depends(get_current
         return {'message': 'Annotation revoked successfully'}
 
     except Exception as e:
-        # logging.error(f"Error revoking shared annotation: {e}")
+        logger.error(f"Error revoking shared annotation: {e}")
         raise HTTPException(status_code=500, detail=str(e))

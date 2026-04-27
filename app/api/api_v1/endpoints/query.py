@@ -16,6 +16,12 @@ from app.annotation_controller import handle_client_request
 from pathlib import Path
 from nanoid import generate
 from app.workers.celery_app import redis_state
+from app.annotation_controller import process_full_data
+from app.lib.email import send_email
+import threading
+from app.core.config import settings
+from app.api.deps import oauth2_scheme
+import jwt
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -48,7 +54,7 @@ def process_query(
         question = requests.get('question', None)
         answer = None
         
-        # Access Check Logic (copied from routes.py)
+        # Access Check Logic
         annotation_id = requests.get('annotation_id', None)
         if annotation_id:
             existing_annotation = AnnotationStorageService.get_by_id(annotation_id)
@@ -74,8 +80,7 @@ def process_query(
                          if role not in ["editor", "owner"] or str(recipient_user_id) != str(current_user_id):
                             raise HTTPException(status_code=401, detail="Unauthorized")
                     
-                    # If shared and authorized, we might operate as owner? 
-                    # Original code: current_user_id = owner_id
+                    # If shared and authorized, we might operate as owner
                     current_user_id = str(owner_id)
 
         # Validate request
@@ -97,7 +102,6 @@ def process_query(
         node_only = True if source == 'hypothesis' else False
 
         # Generate Query
-        print("REQUEST: ", requests)
         query = db_instance.query_Generator(requests, node_map, limit, node_only)
         result_query = query[0]
         total_count_query = query[1]
@@ -108,38 +112,10 @@ def process_query(
         node_types = list(set(node["type"] for node in nodes))
 
         if source is None:
-            # Call controller
-            # Note: handle_client_request returns a Flask Response or tuple. 
-            # We need to adapt it. 
-            # Controller uses start_thread.
-            # handle_client_request logic is refactored to NOT use app.config, but imports deps.
-            # However, handle_client_request was imported from app.annotation_controller.
-            # It returns a Flask Response object in original code.
-            # We should probably refactor handle_client_request to return dict, and wrap in FastAPI Response if needed.
-            # For now, let's assume it works logic-wise but returns Flask Response which FastAPI might choke on if we don't converting.
-            
-            # Since I refactored annotation_controller partially, let's verify return type.
-            # It returns `Response(json.dumps(...), mimetype=...)`.
-            # I should catch that and return pure JSON or use FastAPI Response.
-            # Ideally I should have refactored handle_client_request to return data.
-            
-            # Temporarily, I will invoke it and if it returns Flask response, I assume I can't just return it.
-            # BUT, handle_client_request expects `request` which is a dict here from `data['requests']`.
-            # In original routes: handle_client_request(..., requests, ...). Yes requests is dict.
-            
-            # Re-implementing handle_client_request logic here might be safer for FastAPI purity, 
-            # or refactoring controller to return dict.
-            # Given timeline, I will try to use it but we are mixing frameworks.
-            # Let's see handle_client_request in annotation_controller.py again.
-            # It returns `Response(...)`.
-            
-            # Refactor Idea: Make handle_client_request return dict. FastAPI will serialize it.
-            
+
             response = handle_client_request(query, requests, current_user_id, node_types, species, data_source, node_map)
             return response
 
-        # ... rest of logic for sync execution (hypothesis or if source is set?)
-        
         result = db_instance.run_query(result_query)
         graph_components = {
             "nodes": requests.get('nodes', []), 
@@ -161,7 +137,7 @@ def process_query(
             count_result, schema_manager.full_schema_representation,
             graph_components, result_type='count')
 
-        title = llm.generate_title(result_query, requests, node_map) # request vs requests
+        title = llm.generate_title(result_query, requests, node_map)
         summary = llm.generate_summary(result_graph, requests) or 'Graph too big, could not summarize'
         answer = llm.generate_summary(result_graph, requests, question, False, summary)
         
@@ -170,11 +146,6 @@ def process_query(
             response_grouped = graph.group_node_only(result_graph, requests)
         else:
             response_grouped = graph.group_graph(result_graph)
-            
-        # ... Merge metadata ...
-        # Construct Annotation dict
-        # Save Annotation
-        # Redis setex
         
         annotation = {
             "current_user_id": str(current_user_id),
@@ -211,13 +182,6 @@ def process_query(
         logger.error(f"Error processing query: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Internal Server Error")
 
-
-# ... (Continuing from previous content)
-
-from app.annotation_controller import process_full_data
-from app.lib.email import send_email
-import threading
-
 @router.post("/email-query/{id}")
 def process_email_query(
     id: str,
@@ -229,24 +193,10 @@ def process_email_query(
 
     email = data['email']
     
-    # Logic to send email. In Flask it used copy_current_request_context. 
-    # In FastAPI/Python threading, we need to ensure context if needed.
-    # process_full_data uses database/schema services.
-    # It might use request.host_url. We need to pass that or handle it.
-    
-    # process_full_data in annotation_controller.py:
-    # uses request.host_url to generate link.
-    # We might need to refactor process_full_data to accept host_url.
-    
-    # For now, let's wrap logic here or assume process_full_data needs update.
-    # Actually, let's just implement the logic here cleanly.
-    
     def send_full_data_task():
         try:
             link = process_full_data(current_user_id=current_user_id, annotation_id=id)
-            # check if process_full_data fails due to missing context (request.host_url)
-            # If so, we need to pass host_url or fix logic.
-            # Assuming process_full_data is refactored or we catch error.
+
             if link:
                 subject = 'Full Data'
                 body = f'Hello {email}. click this link {link} to download the full data you requested.'
@@ -264,7 +214,6 @@ def process_user_history(
     current_user_id: str = Depends(get_current_user)
 ):
     try:
-        # UserStorageService.get(current_user_id) # Was in original, maybe for validation?
         cursor = AnnotationStorageService.get_all(current_user_id, page_number)
         
         if cursor is None:
@@ -296,10 +245,6 @@ def process_user_history(
         logger.error(f"Error calling /history: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Internal Server Error")
 
-from app.core.config import settings
-from app.api.deps import oauth2_scheme
-import jwt
-
 @router.get("/annotation/{id}")
 def get_annotation_by_id(
     id: str,
@@ -307,7 +252,7 @@ def get_annotation_by_id(
     limit: Optional[int] = FQuery(None),
     properties: Optional[str] = FQuery(None),
     source: Optional[str] = FQuery(None),
-    auth_header: Optional[str] = Depends(oauth2_scheme), # Returns token string or None if auto_error=False
+    auth_header: Optional[str] = Depends(oauth2_scheme),
     redis_client = Depends(get_redis_client),
 ):
     current_user_id = None
@@ -315,15 +260,9 @@ def get_annotation_by_id(
     # 1. Check shared token in query param
     if token:
         try:
-            # We need SHARED_TOKEN_SECRET, checking logic in routes.py
-            # routes.py: SHARED_TOKEN_SECRET = os.getenv('SHARED_TOKEN_SECRET')
-            # Assuming it uses same secret or specific one. routes.py line 624.
-            # We should add SHARED_TOKEN_SECRET to settings.
-            # fallback to os.getenv if not in settings for now.
             shared_secret = os.getenv('SHARED_TOKEN_SECRET')
             if not shared_secret:
-                 # Fallback/Error?
-                 shared_secret = settings.JWT_SECRET # Assuming fall back or dangerous?
+                 shared_secret = settings.JWT_SECRET
             
             data = jwt.decode(token, shared_secret, algorithms=['HS256'])
             current_user_id = data['user_id']
@@ -357,7 +296,6 @@ def get_annotation_by_id(
 
     owner_id = existing_annotation.user_id
     
-    # Parsing logic from routes.py lines 643-661...
     shared_annotation = SharedAnnotationStorageService.get({
         'user_id': owner_id,
         'annotation_id': id
@@ -374,15 +312,15 @@ def get_annotation_by_id(
             if str(recipient_user_id) != str(current_user_id):
                 raise HTTPException(status_code=401, detail="Unauthorized")
         
-        current_user_id = owner_id # Switch context to owner for retrieval
+        current_user_id = owner_id
 
     cursor = AnnotationStorageService.get_user_annotation(id, str(current_user_id))
 
-    
+
     if cursor is None:
         raise HTTPException(status_code=404, detail="No value Found")
 
-    # Prepare Response (simplified copy from routes.py)
+    # Prepare Response
     json_request = cursor.request
     query = cursor.query
     title = cursor.title
@@ -431,8 +369,6 @@ def get_annotation_by_id(
                  response_data['edges'] = graph.get('edges')
              return response_data
 
-    # If Not in Cache, logic for file loading/requerying...
-    # (Simplified for brevity, copying key parts)
     if status in [TaskStatus.PENDING.value, TaskStatus.COMPLETE.value]:
         if status == TaskStatus.COMPLETE.value:
             if file_path and os.path.exists(file_path):
@@ -442,11 +378,10 @@ def get_annotation_by_id(
                  response_data['edges'] = graph.get('edges')
             else:
                  response_data['status'] = TaskStatus.PENDING.value
-                 from app.annotation_controller import requery # Need to import locally or global
+                 from app.annotation_controller import requery
                  requery(annotation_id, query, json_request, species)
         return response_data
 
-    # Return valid response
     return response_data
 
 
@@ -649,16 +584,16 @@ def cell_component(
             response["nodes"].append(values)
 
 
-        # logging.info(json.dumps({"status": "success", "method": "GET",
-        #                           "timestamp":  datetime.datetime.now().isoformat(),
-        #                           "endpoint": "/localized-graph"}))
-# 
+        logger.info(json.dumps({"status": "success", "method": "GET",
+                                  "timestamp":  datetime.datetime.now().isoformat(),
+                                  "endpoint": "/localized-graph"}))
+ 
         return response
     except Exception as e:
-        # logging.error(json.dumps({"status": "error", "method": "GET",
-        #                           "timestamp":  datetime.datetime.now().isoformat(),
-        #                           "endpoint": "/localized-graph",
-        #                           "exception": str(e)}), exc_info=True)
+        logger.error(json.dumps({"status": "error", "method": "GET",
+                                  "timestamp":  datetime.datetime.now().isoformat(),
+                                  "endpoint": "/localized-graph",
+                                  "exception": str(e)}), exc_info=True)
         error_response = {
         "status": "error",
         "message": "An internal server error occurred. Please try again later.",
@@ -711,17 +646,17 @@ def delete_by_id(id: str, current_user_id: str = Depends(get_current_user)):
             'message': 'Annotation deleted successfully'
         }
         
-        # logging.info(json.dumps({"status": "success", "method": "DELETE",
-        #                           "timestamp":  datetime.datetime.now().isoformat(),
-        #                           "endpoint": "/annotation/<id>",
-        #                          }))
+        logger.info(json.dumps({"status": "success", "method": "DELETE",
+                                  "timestamp":  datetime.datetime.now().isoformat(),
+                                  "endpoint": "/annotation/<id>",
+                                 }))
 
         return response_data
     except Exception as e:
-        # logging.error(json.dumps({"status": "error", "method": "DELETE",
-        #                           "timestamp":  datetime.datetime.now().isoformat(),
-        #                           "endpoint": "/annotation/<id>",
-        #                           "exception": str(e)}), exc_info=True)
+        logger.error(json.dumps({"status": "error", "method": "DELETE",
+                                  "timestamp":  datetime.datetime.now().isoformat(),
+                                  "endpoint": "/annotation/<id>",
+                                  "exception": str(e)}), exc_info=True)
         error_response = {
         "status": "error",
         "message": "An internal server error occurred. Please try again later.",
@@ -764,17 +699,17 @@ async def delete_many(
             'message': f'Out of {len(annotation_ids)}, {delete_count} were successfully deleted.'
         }
         
-        # logging.info(json.dumps({"status": "success", "method": "POST",
-        #                           "timestamp":  datetime.datetime.now().isoformat(),
-        #                           "endpoint": "/annotation/delete"}))
+        logger.info(json.dumps({"status": "success", "method": "POST",
+                                  "timestamp":  datetime.datetime.now().isoformat(),
+                                  "endpoint": "/annotation/delete"}))
 
         return response_data
         
     except Exception as e:
-        # logging.error(json.dumps({"status": "error", "method": "POST",
-        #                           "timestamp":  datetime.datetime.now().isoformat(),
-        #                           "endpoint": "/annotation/delete",
-        #                           "exception": str(e)}), exc_info=True)
+        logger.error(json.dumps({"status": "error", "method": "POST",
+                                  "timestamp":  datetime.datetime.now().isoformat(),
+                                  "endpoint": "/annotation/delete",
+                                  "exception": str(e)}), exc_info=True)
         
         return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -806,17 +741,16 @@ def update_title(id:str, data: dict = Body(...),current_user_id: str = Depends(g
             'title': title,
         }
 
-        #logging.info(json.dumps({"status": "success", "method": "PUT",
-        #                          "timestamp":  datetime.datetime.now().isoformat(),
-        #                          "endpoint": "/annotation/<id>/title",
-        #                          "exception": str(e)}), exc_info=True)
-    #
+        logger.info(json.dumps({"status": "success", "method": "PUT",
+                                  "timestamp":  datetime.datetime.now().isoformat(),
+                                  "endpoint": "/annotation/<id>/title",
+                                  "exception": str(e)}), exc_info=True)
         return response_data
     except Exception as e:
-        # logging.error(json.dumps({"status": "error", "method": "PUT",
-        #                           "timestamp":  datetime.datetime.now().isoformat(),
-        #                           "endpoint": "/annotation/<id>/title",
-        #                           "exception": str(e)}), exc_info=True)
+        logger.error(json.dumps({"status": "error", "method": "PUT",
+                                  "timestamp":  datetime.datetime.now().isoformat(),
+                                  "endpoint": "/annotation/<id>/title",
+                                  "exception": str(e)}), exc_info=True)
 
         return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

@@ -6,6 +6,8 @@ import zipfile
 from io import BytesIO
 import os
 
+logger = logging.getLogger(__name__)
+
 def adjust_file_path(file_path):
     parent_name = file_path.parents[1].name
     file_path = str(file_path)
@@ -47,9 +49,8 @@ def convert_to_csv(response, user_id, file_name):
                 edge.columns = [col.replace('data.', '') for col in edge.columns]
                 edge.to_excel(writer, sheet_name=f'{source}-relationship-{target}', index=False)
     except Exception as e:
-        print(e)
         os.remove(file_path)
-        logging.error(f"Error converting to Excel: {e}")
+        logger.error(f"Error converting to Excel: {e}")
     return file_path
 
 def convert_to_excel(response):
@@ -117,7 +118,7 @@ def convert_to_excel(response):
         output.seek(0)
         return output
     except Exception as e:
-        logging.error(f"Error converting to Excel: {e}")
+        logger.error(f"Error converting to Excel: {e}")
         return None
 
 def extract_middle(words):
@@ -175,5 +176,5 @@ def convert_to_tsv(new_graph):
         return output
 
     except Exception as e:
-        logging.error(f"Error converting to Excel: {e}")
+        logger.error(f"Error converting to Excel: {e}")
         return None

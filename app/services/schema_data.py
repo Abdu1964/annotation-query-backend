@@ -5,8 +5,7 @@ import yaml
 import os
 from pathlib import Path
 
-# Setup basic logging
-logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger(__name__)
 
 class SchemaManager:
     def __init__(self, schema_config_path: str,

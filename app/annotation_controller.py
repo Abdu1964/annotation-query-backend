@@ -1,42 +1,33 @@
 import logging
-from app.api.deps import get_db_instance, get_schema_manager
-# Initialize locally for module-level usage if required but preferably lazy load
-db_instance = get_db_instance()
-schema_manager = get_schema_manager()
 import json
 import os
-import threading # Still needed for other parts, but less so for task management now
 import datetime
-# Updated imports: removed generate_result, added graph_task
+from app.api.deps import get_db_instance, get_schema_manager
 from app.workers.task_handler import graph_task, start_thread, reset_task, reset_status
 from app.lib import convert_to_csv, generate_file_path, \
     adjust_file_path
 import time
 from app.constants import TaskStatus
 from app.persistence import AnnotationStorageService
-# Import init_request_state from celery to initialize redis keys
 from .workers.celery_app import init_request_state
-
 from app.api.deps import get_llm_handler
+
+logger = logging.getLogger(__name__)
+# Initialize locally for module-level usage if required but preferably lazy load
+db_instance = get_db_instance()
+schema_manager = get_schema_manager()
 
 llm = get_llm_handler()
 EXP = os.getenv('REDIS_EXPIRATION', 3600) # expiration time of redis cache
 
 def handle_client_request(query, request, current_user_id, node_types, species, data_source, node_map):
     annotation_id = request.get('annotation_id', None)
-    
-    # --- 1. Check for existing Annotation ---
-    
     # --- 1. Check for existing Annotation ---
     if annotation_id:
         existing_query = AnnotationStorageService.get_user_query(
             annotation_id, str(current_user_id), query[0])
     else:
         existing_query = None
-
-    # Note: We no longer need to create threading.Events (result_done, etc.) here 
-    # because Celery handles the async state now. We pass 'None' or handle it 
-    # inside start_thread/celery tasks.
 
     # --- 2. Handle Existing Query ---
     if existing_query:
@@ -58,7 +49,6 @@ def handle_client_request(query, request, current_user_id, node_types, species, 
         init_request_state(annotation_id)
 
         # We pass dummy events or remove them from args structure if start_thread is updated.
-        # Assuming start_thread expects the structure we defined in task_handler:
         args = {
             'all_status': {
                 'result_done': 0, 
@@ -87,21 +77,7 @@ def handle_client_request(query, request, current_user_id, node_types, species, 
 
         annotation_id = AnnotationStorageService.save(annotation)
         init_request_state(annotation_id)
-        init_request_state(annotation_id)
 
-        args = {
-            'all_status': {
-                'result_done': 0, 
-                'total_count_done': 0,
-                'label_count_done': 0
-            }, 
-            'query': query, 
-            'request': request,
-            'summary': None, 
-            'meta_data': None, 
-            'data_source': data_source, 
-            'species': species
-        }
         args = {
             'all_status': {
                 'result_done': 0, 
@@ -126,10 +102,6 @@ def handle_client_request(query, request, current_user_id, node_types, species, 
         if 'annotation_id' in request:
             del request['annotation_id']
             
-        # Check if annotation_id needs to be removed from request dict (cleanup)
-        if 'annotation_id' in request:
-            del request['annotation_id']
-            
         annotation = {"query": str(query[0]), "request": request,
                       "title": title, "node_types": node_types,
                       'status': TaskStatus.PENDING.value, 'node_count': None,
@@ -139,7 +111,6 @@ def handle_client_request(query, request, current_user_id, node_types, species, 
         AnnotationStorageService.update(annotation_id, annotation)
         reset_task(annotation_id)
         init_request_state(annotation_id)
-        init_request_state(annotation_id)
 
         args = {
             'all_status': {
@@ -153,19 +124,6 @@ def handle_client_request(query, request, current_user_id, node_types, species, 
             'meta_data': None, 
             'species': species
         }
-        args = {
-            'all_status': {
-                'result_done': 0, 
-                'total_count_done': 0,
-                'label_count_done': 0
-            }, 
-            'query': query, 
-            'request': request,
-            'summary': None, 
-            'meta_data': None, 
-            'species': species
-        }
-
         start_thread(annotation_id, args)
 
         return {"annotation_id": str(annotation_id)}
@@ -192,9 +150,6 @@ def process_full_data(current_user_id, annotation_id):
             link = f'{request.host_url}{file_path}'
             return link
 
-        # Run the query and parse the results
-        # NOTE: If this is computationally heavy, you might want to move this 
-        # to a celery task as well in the future.
         result = db_instance.run_query(query)
         parsed_result = db_instance.convert_to_dict(
             result, schema_manager.schema, graph_components)
@@ -217,7 +172,6 @@ def requery(annotation_id, query, request, species='human'):
     AnnotationStorageService.update(
         annotation_id, {"status": TaskStatus.PENDING.value})
     
-    # We reset redis status for this task
     
     # We reset redis status for this task
     reset_status(annotation_id)
@@ -237,6 +191,6 @@ def requery(annotation_id, query, request, species='human'):
             status=TaskStatus.COMPLETE.value
         )
     except Exception as e:
-        logging.error("Error triggering graph_task celery job %s", e)
+        logger.error("Error triggering graph_task celery job %s", e)
 
     return
