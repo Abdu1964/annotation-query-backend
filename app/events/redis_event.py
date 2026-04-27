@@ -1,3 +1,5 @@
+from app.constants import TaskStatus
+
 class RedisStopEvent:
     """
     Mimics threading.Event but checks a Redis key.
@@ -15,7 +17,7 @@ class RedisStopEvent:
             # Decode if bytes (Redis standard)
             if isinstance(status, bytes):
                 status = status.decode('utf-8')
-            return status == "CANCELLED"
+            return status == TaskStatus.CANCELLED.value
         return False
     
     def get_status(self):
