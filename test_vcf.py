@@ -38,4 +38,4 @@ def validate_vcf_with_pysam(vcf_path):
         return False
 
 # Usage
-validate_vcf_with_pysam("/mnt/hdd_1/annotation-query-backend/public/vcf/694e7dc3f184a84edea03760.vcf")
+# validate_vcf_with_pysam("/mnt/hdd_1/annotation-query-backend/public/vcf/694e7dc3f184a84edea03760.vcf")
