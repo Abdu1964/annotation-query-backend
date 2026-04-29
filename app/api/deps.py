@@ -92,7 +92,7 @@ def get_db_instance() -> Any:
             "metta": lambda: MeTTa_Query_Generator("./Data"),
             "cypher": lambda: CypherQueryGenerator("./cypher_data"),
             "mork": lambda: MorkQueryGenerator("./mork_data"),
-            "mork_cli": _load_mork_cli_generator()
+            "mork_cli": lambda: _load_mork_cli_generator()
         }
         db_type = settings.DATABASE_TYPE
         if db_type in databases:
