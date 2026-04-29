@@ -6,8 +6,9 @@ import uuid
 from pathlib import Path
 from app.services.mork_generator import MorkQueryGenerator
 from hyperon import MeTTa
-from app import perf_logger
+import logging
 
+logger = logging.getLogger(__name__)
 class MorkCLIQueryGenerator(MorkQueryGenerator):
     def __init__(self, dataset_path):
         super().__init__(dataset_path=None)
@@ -27,10 +28,8 @@ class MorkCLIQueryGenerator(MorkQueryGenerator):
     def connect(self):
         return None
         
-    def run_query(self, query, stop_event=None, species='human'):
-        from app import app
-        start_time = time.time()
-        pattern_tuple, template_tuple, query_type = query
+    def run_query(self, query, stop_event=None, species='human'):   
+        pattern_tuple, template_tuple, current_id = query # we current id is only getting used for the mork query generator not the cli
         
         pattern_str = " ".join(pattern_tuple)
         template_str = " ".join(template_tuple)
@@ -46,8 +45,7 @@ class MorkCLIQueryGenerator(MorkQueryGenerator):
                 f"Missing ACT file: {act_file}. "
                 "Run 'python scripts/build_act.py' to generate it."
             )
-            app.logger.error(message)
-            print(message, flush=True)
+            logger.error(message)
             raise FileNotFoundError(message)
         
         if not shm_act.exists() or (act_file.stat().st_mtime > shm_act.stat().st_mtime):
@@ -57,7 +55,7 @@ class MorkCLIQueryGenerator(MorkQueryGenerator):
                 os.replace(temp_shm, shm_act)
             except Exception as e:
                 if not shm_act.exists():
-                    app.logger.warning(f"SHM Symlink update failed: {e}")
+                    logger.error(f"SHM Symlink update failed: {e}")
         
         if len(pattern_tuple) == 1:
             act_pattern = pattern_tuple[0]
@@ -92,13 +90,10 @@ class MorkCLIQueryGenerator(MorkQueryGenerator):
 
             metta_result = self.metta.parse_all(actual_result)
             
-            duration = (time.time() - start_time) * 1000
-            perf_logger.info("Query executed", extra={"query": str(query), "duration_ms": duration, "status": "success"})
-            
             return [metta_result]
         finally:
             if query_file.exists():
                 try:
                     query_file.unlink()
                 except Exception as e:
-                    app.logger.warning(f"Failed to delete temp query file {query_file}: {e}")
+                    logger.warning(f"Failed to delete temp query file {query_file}: {e}")

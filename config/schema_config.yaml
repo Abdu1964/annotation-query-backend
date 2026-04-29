@@ -908,3 +908,15 @@ transcript_to_exon:
     source: str
     source_url: str
 
+overlaps_with:
+  is_a: related to at instance
+  description: >-
+    An association between a transcript and its exons
+  represented_as: edge
+  input_label: overlaps_with
+  output_label: overlaps_with
+  source: super_enhancer
+  target: gene
+  properties: 
+    source: str
+    source_url: str

@@ -9,7 +9,7 @@ services:
     ports:
       - "${APP_PORT}:${APP_PORT}"
     # Web server command
-    command: gunicorn -k gthread -w 1 --threads 100 --bind 0.0.0.0:${APP_PORT} run:app
+    command: gunicorn app.main:socket_app --workers 4 --worker-class uvicorn.workers.UvicornWorker --bind 0.0.0.0:${APP_PORT}
     restart: always
     depends_on:
       - mongodb
@@ -17,15 +17,15 @@ services:
     # We define the environment here and anchor it as &app_env
     # so we can simply reuse it in the celery_worker below.
     environment: &app_env
-      - MONGO_URI=${MONGO_URI}
-      - APP_PORT=${APP_PORT}
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
-      # Cache and Result Backend (DB 0)
-      - REDIS_URL=redis://redis:6379/0
-      # Celery Message Broker (DB 1)
-      - REDIS_URL_BROKER=redis://redis:6379/1
-      - REDIS_EXPIRATION=3600
+      MONGO_URI: ${MONGO_URI}
+      APP_PORT: ${APP_PORT}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_URL: redis://redis:6379/0
+      REDIS_URL_BROKER: redis://redis:6379/1
+      REDIS_EXPIRATION: 3600
+      FASTAPI_APP: "true"
+
 
   celery_worker:
     image: "${DOCKER_HUB_REPO}"
@@ -42,7 +42,9 @@ services:
       - redis
       - mongodb
     # Reuse the exact same environment variables as the main app
-    environment: *app_env
+    environment:
+      <<: *app_env
+      C_FORCE_ROOT: "1"
 
   mongodb:
     image: mongo:latest
@@ -55,7 +57,7 @@ services:
   redis:
     image: redis:latest
     ports:
-      - "6380:6379"
+      - "6399:6379"
     restart: always
     volumes:
       - redis_data:/data

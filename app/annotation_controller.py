@@ -1,9 +1,8 @@
 import logging
-from flask import Response, request, current_app
-from app import app, db_instance, schema_manager
 import json
 import os
 import datetime
+from app.api.deps import get_db_instance, get_schema_manager
 from app.workers.task_handler import graph_task, start_thread, reset_task, reset_status
 from app.lib import convert_to_csv, generate_file_path, \
     adjust_file_path
@@ -11,13 +10,18 @@ import time
 from app.constants import TaskStatus
 from app.persistence import AnnotationStorageService
 from .workers.celery_app import init_request_state
+from app.api.deps import get_llm_handler
 
-llm = app.config['llm_handler']
-EXP = os.getenv('REDIS_EXPIRATION', 3600)
+logger = logging.getLogger(__name__)
+# Initialize locally for module-level usage if required but preferably lazy load
+db_instance = get_db_instance()
+schema_manager = get_schema_manager()
+
+llm = get_llm_handler()
+EXP = os.getenv('REDIS_EXPIRATION', 3600) # expiration time of redis cache
 
 def handle_client_request(query, request, current_user_id, node_types, species, data_source, node_map):
     annotation_id = request.get('annotation_id', None)
-    
     # --- 1. Check for existing Annotation ---
     if annotation_id:
         existing_query = AnnotationStorageService.get_user_query(
@@ -39,10 +43,12 @@ def handle_client_request(query, request, current_user_id, node_types, species, 
         AnnotationStorageService.update(
             annotation_id, {"status": TaskStatus.PENDING.value, "updated_at": datetime.datetime.now()})
         
+        
         reset_status(annotation_id)
         # Initialize Redis keys for progress tracking (0/1)
         init_request_state(annotation_id)
 
+        # We pass dummy events or remove them from args structure if start_thread is updated.
         args = {
             'all_status': {
                 'result_done': 0, 
@@ -58,9 +64,7 @@ def handle_client_request(query, request, current_user_id, node_types, species, 
         }
 
         start_thread(annotation_id, args)
-        return Response(
-            json.dumps({"annotation_id": str(annotation_id)}),
-            mimetype='application/json')
+        return {"annotation_id": str(annotation_id)}
 
     # --- 3. Handle New Query (Create New Annotation) ---
     elif annotation_id is None:
@@ -89,9 +93,7 @@ def handle_client_request(query, request, current_user_id, node_types, species, 
         }
         start_thread(annotation_id, args)
 
-        return Response(
-            json.dumps({"annotation_id": str(annotation_id)}),
-            mimetype='application/json')
+        return {"annotation_id": str(annotation_id)}
 
     # --- 4. Handle Existing Annotation ID but different query (Update) ---
     else:
@@ -122,13 +124,9 @@ def handle_client_request(query, request, current_user_id, node_types, species, 
             'meta_data': None, 
             'species': species
         }
-
         start_thread(annotation_id, args)
 
-        return Response(
-            json.dumps({'annotation_id': str(annotation_id)}),
-            mimetype='application/json'
-        )
+        return {"annotation_id": str(annotation_id)}
 
 def process_full_data(current_user_id, annotation_id):
     cursor = AnnotationStorageService.get_by_id(annotation_id)
@@ -169,15 +167,20 @@ def process_full_data(current_user_id, annotation_id):
 def requery(annotation_id, query, request, species='human'):
     """
     Re-runs only the graph generation part of the task.
+    Updated to use Celery instead of threading.
     """
     AnnotationStorageService.update(
         annotation_id, {"status": TaskStatus.PENDING.value})
+    
     
     # We reset redis status for this task
     reset_status(annotation_id)
     # Ensure redis progress keys are ready
     init_request_state(annotation_id)
 
+    # Use Celery .delay() or .apply_async()
+    # graph_task signature: (query_code, annotation_id, requests, result_status, species, status=None)
+    # result_status argument is legacy (was event), passing 0 or None
     try:
         graph_task.delay(
             query, 
@@ -188,6 +191,6 @@ def requery(annotation_id, query, request, species='human'):
             status=TaskStatus.COMPLETE.value
         )
     except Exception as e:
-        logging.error("Error triggering graph_task celery job %s", e)
+        logger.error("Error triggering graph_task celery job %s", e)
 
     return

@@ -106,6 +106,7 @@ class CypherQueryGenerator(QueryGeneratorInterface):
         node_ids = set()
         clause_list = []
         
+        # Track virtual definitions for the count clause
         virtual_defs = []
 
         if not predicates:
@@ -218,11 +219,12 @@ class CypherQueryGenerator(QueryGeneratorInterface):
                 "list_of_node_ids": list_of_node_ids,
                 "return_preds": return_preds,
                 "predicates": predicates,
-                "virtual_defs": virtual_defs # Pass virtual definitions to count clause
+                "virtual_defs": virtual_defs
             }
             count = self.construct_count_clause(
                 query_clauses, node_map, predicate_map)
             cypher_queries.extend(count)
+            
             
         return cypher_queries
 
@@ -251,7 +253,7 @@ class CypherQueryGenerator(QueryGeneratorInterface):
         where_no_clause = ''
         match_clause = ''
         where_clause = ''
-        virtual_setup = ''
+        virtual_setup = '' # To hold the APOC definitions
 
         # Construct clause for match with no predicates
         if 'match_no_preds' in query_clauses and query_clauses['match_no_preds']:
@@ -265,7 +267,7 @@ class CypherQueryGenerator(QueryGeneratorInterface):
             if 'where_preds' in query_clauses and query_clauses['where_preds']:
                 where_clause = f"WHERE {' AND '.join(query_clauses['where_preds'])}"
 
-
+        # Define virtual relationships so the variable 'p0' exists for the RETURN clause
         if 'virtual_defs' in query_clauses and query_clauses['virtual_defs']:
             virtual_setup = f"WITH *, {', '.join(query_clauses['virtual_defs'])}"
 

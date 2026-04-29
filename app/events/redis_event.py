@@ -2,6 +2,7 @@ from app.constants import TaskStatus
 
 class RedisStopEvent:
     """
+    Mimics threading.Event but checks a Redis key.
     Used to cancel loops inside Celery tasks.
     """
     def __init__(self, annotation_id, redis_client):

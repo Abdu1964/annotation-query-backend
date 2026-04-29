@@ -4,6 +4,8 @@ from app.services.llm_models import OpenAIModel, GeminiModel
 from app.services.graph_handler import Graph_Summarizer
 import logging
 
+logger = logging.getLogger(__name__)
+
 load_dotenv()
 
 class LLMHandler:
@@ -175,7 +177,7 @@ class LLMHandler:
             title = self.model.generate(prompt)
             return title
         except Exception as e:
-            logging.error("Error generating title: ", {e})
+            logger.error("Error generating title: %s", e)
             if request is None or node_map is None:
                 return "Untitled"
             else:
@@ -254,6 +256,7 @@ class LLMHandler:
     def generate_title_no_llm(self, req, node_map):
         predicates = req.get('predicates', [])
 
+
         if not predicates:
             # List items, adding "Unnamed" if generic
             items = []
@@ -303,6 +306,7 @@ class LLMHandler:
 
             chains.append(fragment)
 
+        # Final Polish
         title = ", and ".join(chains)
         return title[0].upper() + title[1:]
 
@@ -314,5 +318,5 @@ class LLMHandler:
             summary = summarizer.summary(graph, request, user_query, graph_id, summary)
             return summary
         except Exception as e:
-            logging.error(f"Error generating summary: {e}")
+            logger.error(f"Error generating summary: {e}")
             return "No summary available"
