@@ -101,117 +101,117 @@ jobs:
         
         # Create docker-compose.ci.yml  
         cat > docker-compose.ci.yml << EOF
-services:
-  annotation_service:
-    image: $IMAGE_TAG
-    container_name: annotation_service-staging
-    ports:
-      - "${{ env.APP_PORT }}:${{ env.APP_PORT }}"
-    volumes:
-      - .:/app   
-    command: gunicorn app.main:socket_app --workers 1 --worker-class uvicorn.workers.UvicornWorker --bind 0.0.0.0:${env.APP_PORT}
-    restart: unless-stopped
-    depends_on:
-      - mongodb
-      - redis
-    environment:
-      # Application
-      - APP_PORT=${{ env.APP_PORT }}
-      
-      # MongoDB - Local test container
-      - MONGO_URI=$MONGO_URI
-      
-      # Redis - Local test container
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
-      - REDIS_URL=$REDIS_URL
-      - REDIS_EXPIRATION=$REDIS_EXPIRATION
-      
-      # Neo4j - ALL point to REAL external servers (safe for queries)
-      - NEO4J_URI=$NEO4J_URI
-      - NEO4J_USERNAME=$NEO4J_USERNAME
-      - NEO4J_PASSWORD=$NEO4J_PASSWORD
-      - HUMAN_NEO4J_URI=$HUMAN_NEO4J_URI
-      - HUMAN_NEO4J_USERNAME=$HUMAN_NEO4J_USERNAME
-      - HUMAN_NEO4J_PASSWORD=$HUMAN_NEO4J_PASSWORD
-      - FLY_NEO4J_URI=$FLY_NEO4J_URI
-      - FLY_NEO4J_USERNAME=$FLY_NEO4J_USERNAME
-      - FLY_NEO4J_PASSWORD=$FLY_NEO4J_PASSWORD
-      
-      # LLM
-      - LLM_MODEL=$LLM_MODEL
-      - GEMINI_API_KEY=$GEMINI_API_KEY
-      
-      # Security
-      - JWT_SECRET=$JWT_SECRET
-      - SECRET_KEY=$SECRET_KEY
-      
-      # Email
-      - MAIL_SERVER=$MAIL_SERVER
-      - MAIL_PORT=$MAIL_PORT
-      - MAIL_USERNAME=$MAIL_USERNAME
-      - MAIL_PASSWORD=$MAIL_PASSWORD
-      - MAIL_DEFAULT_SENDER=$MAIL_DEFAULT_SENDER
-      - MAIL_USE_TLS=$MAIL_USE_TLS
-      - MAIL_USE_SSL=$MAIL_USE_SSL
-      
-      # Monitoring
-      - SENTRY_DSN=$SENTRY_DSN
-      - AXIOM_TOKEN=$AXIOM_TOKEN
-      - AXIOM_DATASET=$AXIOM_DATASET
-      - AXIOM_PERFORMANCE_LOGS=$AXIOM_PERFORMANCE_LOGS
-      
-      # External Services
-      - MORK_URL=$MORK_URL
-      
-      # File Paths - Use temp directory
-      - PARENT_DIR=$PARENT_DIR
-      - MORK_DATA_DIR=/tmp/mork_data
-      
-      # Elasticsearch
-      - ES_URL=http://elasticsearch:9200
-      - ES_API_KEY=test_api_key
-      
-      # Docker
-      - DOCKER_HUB_REPO=$DOCKER_HUB_REPO
+        services:
+          annotation_service:
+            image: $IMAGE_TAG
+            container_name: annotation_service-staging
+            ports:
+              - "${{ env.APP_PORT }}:${{ env.APP_PORT }}"
+            volumes:
+              - .:/app   
+            command: gunicorn app.main:socket_app --workers 4 --worker-class uvicorn.workers.UvicornWorker --bind 0.0.0.0:${{ env.APP_PORT }}
+            restart: unless-stopped
+            depends_on:
+              - mongodb
+              - redis
+            environment:
+              # Application
+              - APP_PORT=${{ env.APP_PORT }}
+              
+              # MongoDB - Local test container
+              - MONGO_URI=$MONGO_URI
+              
+              # Redis - Local test container
+              - REDIS_HOST=redis
+              - REDIS_PORT=6379
+              - REDIS_URL=$REDIS_URL
+              - REDIS_EXPIRATION=$REDIS_EXPIRATION
+              
+              # Neo4j - ALL point to REAL external servers (safe for queries)
+              - NEO4J_URI=$NEO4J_URI
+              - NEO4J_USERNAME=$NEO4J_USERNAME
+              - NEO4J_PASSWORD=$NEO4J_PASSWORD
+              - HUMAN_NEO4J_URI=$HUMAN_NEO4J_URI
+              - HUMAN_NEO4J_USERNAME=$HUMAN_NEO4J_USERNAME
+              - HUMAN_NEO4J_PASSWORD=$HUMAN_NEO4J_PASSWORD
+              - FLY_NEO4J_URI=$FLY_NEO4J_URI
+              - FLY_NEO4J_USERNAME=$FLY_NEO4J_USERNAME
+              - FLY_NEO4J_PASSWORD=$FLY_NEO4J_PASSWORD
+              
+              # LLM
+              - LLM_MODEL=$LLM_MODEL
+              - GEMINI_API_KEY=$GEMINI_API_KEY
+              
+              # Security
+              - JWT_SECRET=$JWT_SECRET
+              - SECRET_KEY=$SECRET_KEY
+              
+              # Email
+              - MAIL_SERVER=$MAIL_SERVER
+              - MAIL_PORT=$MAIL_PORT
+              - MAIL_USERNAME=$MAIL_USERNAME
+              - MAIL_PASSWORD=$MAIL_PASSWORD
+              - MAIL_DEFAULT_SENDER=$MAIL_DEFAULT_SENDER
+              - MAIL_USE_TLS=$MAIL_USE_TLS
+              - MAIL_USE_SSL=$MAIL_USE_SSL
+              
+              # Monitoring
+              - SENTRY_DSN=$SENTRY_DSN
+              - AXIOM_TOKEN=$AXIOM_TOKEN
+              - AXIOM_DATASET=$AXIOM_DATASET
+              - AXIOM_PERFORMANCE_LOGS=$AXIOM_PERFORMANCE_LOGS
+              
+              # External Services
+              - MORK_URL=$MORK_URL
+              
+              # File Paths - Use temp directory
+              - PARENT_DIR=$PARENT_DIR
+              - MORK_DATA_DIR=/tmp/mork_data
+              
+              # Elasticsearch
+              - ES_URL=http://elasticsearch:9200
+              - ES_API_KEY=test_api_key
+              
+              # Docker
+              - DOCKER_HUB_REPO=$DOCKER_HUB_REPO
 
-mongodb:
-  image: mongo:latest
-  container_name: mongodb-staging
-  volumes:
-    - mongo_data:/data/db
-  ports:
-    - "${{ env.MONGODB_DOCKER_PORT }}:27017"
-  restart: unless-stopped
+          mongodb:
+            image: mongo:latest
+            container_name: mongodb-staging
+            volumes:
+              - mongo_data:/data/db
+            ports:
+              - "${{ env.MONGODB_DOCKER_PORT }}:27017"
+            restart: unless-stopped
 
-redis:
-  image: redis:latest
-  container_name: redis-staging
-  volumes:
-    - redis_data:/data
-  ports:
-    - "6382:6379"
-  restart: unless-stopped
+          redis:
+            image: redis:latest
+            container_name: redis-staging
+            volumes:
+              - redis_data:/data
+            ports:
+              - "6382:6379"
+            restart: unless-stopped
 
-caddy:
-  image: caddy:latest
-  container_name: caddy-staging
-  ports:
-    - "${{ env.CADDY_PORT }}:${{ env.CADDY_PORT_FORWARD }}"
-  volumes:
-    - caddy_data:/data
-    - caddy_config:/config
-  command: caddy reverse-proxy --from http://0.0.0.0:${{ env.CADDY_PORT_FORWARD }} --to http://annotation_service:${{ env.APP_PORT }}
-  restart: unless-stopped
-  depends_on:
-    - annotation_service
+          caddy:
+            image: caddy:latest
+            container_name: caddy-staging
+            ports:
+              - "${{ env.CADDY_PORT }}:${{ env.CADDY_PORT_FORWARD }}"
+            volumes:
+              - caddy_data:/data
+              - caddy_config:/config
+            command: caddy reverse-proxy --from http://0.0.0.0:${{ env.CADDY_PORT_FORWARD }} --to http://annotation_service:${{ env.APP_PORT }}
+            restart: unless-stopped
+            depends_on:
+              - annotation_service
 
-volumes:
-  mongo_data:
-  redis_data:
-  caddy_data:
-  caddy_config:
-EOF
+        volumes:
+          mongo_data:
+          redis_data:
+          caddy_data:
+          caddy_config:
+        EOF
         
         # Create test data directories
         mkdir -p /tmp/test_data
