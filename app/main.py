@@ -90,6 +90,9 @@ app.include_router(api_router)
 mimetypes.add_type('application/octet-stream', '.tbi')
 mimetypes.add_type('application/gzip', '.gz')
 
-os.makedirs("public", exist_ok=True)
-app.mount("/public", StaticFiles(directory="public"), name="static")
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+PUBLIC_DIR = os.path.join(BASE_DIR, "public")
+
+os.makedirs(PUBLIC_DIR, exist_ok=True)
+app.mount("/public", StaticFiles(directory=PUBLIC_DIR), name="static")
 

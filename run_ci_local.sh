@@ -2,7 +2,10 @@
 set -e
 
 # Load your secrets
-source .secrets
+if [ ! -r .secrets ]; then
+  echo "Error: .secrets file is missing or not readable. Create .secrets with the required environment variables before running this script." >&2
+  exit 1
+fi
 
 # Variables
 IMAGE_TAG="abdum1964/annotation:staging"
@@ -116,9 +119,21 @@ touch /tmp/mork_data/annotation.act
 # Step 4: Start
 echo "=== Starting services ==="
 docker compose -p annotation-staging -f docker-compose.ci.yml up -d
-sleep 30
 
+MAX_HEALTH_WAIT_SECONDS=60
+HEALTH_CHECK_INTERVAL_SECONDS=2
+HEALTH_ELAPSED_SECONDS=0
+until curl -fsS "http://localhost:${APP_PORT}/health" >/dev/null; do
+  if [ "$HEALTH_ELAPSED_SECONDS" -ge "$MAX_HEALTH_WAIT_SECONDS" ]; then
+    break
+  fi
+  sleep "$HEALTH_CHECK_INTERVAL_SECONDS"
+  HEALTH_ELAPSED_SECONDS=$((HEALTH_ELAPSED_SECONDS + HEALTH_CHECK_INTERVAL_SECONDS))
+done
 # Step 5: Check
 docker logs annotation_service-staging --tail 50
-curl -f http://localhost:${APP_PORT}/health && echo "HEALTH OK" || echo "HEALTH FAILED"
-
+if curl -fsS "http://localhost:${APP_PORT}/health" >/dev/null; then
+  echo "HEALTH OK"
+else
+  echo "HEALTH FAILED"
+fi
