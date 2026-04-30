@@ -1,3 +1,4 @@
+import os
 import asyncio
 import json
 import socketio
@@ -13,7 +14,6 @@ from app.api.api_v1.api import api_router
 import app.events.socket_event
 from fastapi.staticfiles import StaticFiles
 import mimetypes
-
 # Add always on listen for socket events
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -90,5 +90,6 @@ app.include_router(api_router)
 mimetypes.add_type('application/octet-stream', '.tbi')
 mimetypes.add_type('application/gzip', '.gz')
 
+os.makedirs("public", exist_ok=True)
 app.mount("/public", StaticFiles(directory="public"), name="static")
 
