@@ -216,7 +216,6 @@ jobs:
         # Create test data directories
         mkdir -p /tmp/test_data
         mkdir -p /tmp/mork_data
-        mkdir -p /app/public
         touch /tmp/mork_data/annotation.act
         
         # Step 1: Start all services with docker compose up
