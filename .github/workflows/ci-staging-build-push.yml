@@ -462,32 +462,33 @@ jobs:
           fi
         fi
 
-        # Check infrastructure services are running (informational - uses docker inspect for reliable status)
+        # Check infrastructure services are running (uses docker inspect for reliable status)
         declare -A SERVICE_CONTAINERS=(
           [mongodb]="mongodb-staging"
           [redis]="redis-staging"
           [annotation_service]="annotation_service-staging"
           [caddy]="caddy-staging"
         )
-        INFRA_WARNINGS=""
+        INFRA_RUNNING=true
         for service in mongodb redis annotation_service caddy; do
           CONTAINER="${SERVICE_CONTAINERS[$service]}"
           STATUS=$(docker inspect --format='{{.State.Status}}' "$CONTAINER" 2>/dev/null || echo "missing")
           if [[ "$STATUS" == "running" ]]; then
             echo "[SUCCESS] $service is running"
           else
-            echo "[WARNING] $service status: $STATUS (container: $CONTAINER)"
-            INFRA_WARNINGS="$INFRA_WARNINGS $service"
+            echo "[ERROR] $service is NOT running (status: $STATUS)"
+            INFRA_RUNNING=false
           fi
         done
 
-        # Check application health — this is the primary gate
+        # Check application health
         APP_HEALTHY=true
         echo "=== Checking application health ==="
 
         # Check for critical errors in logs
         if docker logs annotation_service-staging 2>/dev/null | grep -E "ConnectionRefusedError|OperationalError|Authentication failed"; then
-          echo "[WARNING] Critical error pattern found in application logs"
+          echo "[ERROR] Critical database connection/authentication error found"
+          APP_HEALTHY=false
         fi
 
         # Check if application responds to health endpoint
@@ -497,10 +498,9 @@ jobs:
            curl -sf http://localhost:${{ env.CADDY_PORT }}/ 2>/dev/null; then
           echo "[SUCCESS] Application is responding through Flask or Caddy"
         else
-          echo "[WARNING] Application not responding, waiting 30s and retrying..."
+          echo "[WARNING] Application direct endpoints not responding, checking if it's starting up..."
           sleep 30
-          if curl -sf http://localhost:${{ env.APP_PORT }}/ 2>/dev/null || \
-             curl -sf http://localhost:${{ env.CADDY_PORT }}/ 2>/dev/null; then
+          if curl -sf http://localhost:${{ env.APP_PORT }}/ 2>/dev/null || curl -sf http://localhost:${{ env.CADDY_PORT }}/ 2>/dev/null; then
             echo "[SUCCESS] Application responded after additional wait"
           else
             echo "[ERROR] Application is NOT responding after extended wait"
@@ -508,23 +508,14 @@ jobs:
           fi
         fi
 
-        # Report any infrastructure warnings
-        if [[ -n "$INFRA_WARNINGS" ]]; then
-          echo "[WARNING] Some services not in running state:$INFRA_WARNINGS"
-          echo "[INFO] Full compose status:"
-          docker compose -p annotation-staging -f docker-compose.ci.yml ps
-        fi
-
-        # APP_HEALTHY is the primary gate — if the app responds, validation passes
-        if [[ "$APP_HEALTHY" == "true" ]]; then
-          echo "[SUCCESS] Application is healthy and responding"
+        if [[ "$INFRA_RUNNING" == "true" && "$APP_HEALTHY" == "true" ]]; then
+          echo "[SUCCESS] All services are running and application is healthy"
           echo ""
           echo "*** VALIDATION PASSED - Continuing pipeline"
           echo "*** Image will be pushed to Docker Hub"
         else
-          echo "[ERROR] CRITICAL: Validation failed - application is not responding"
-          # Print full logs for debugging
-          echo "=== annotation_service logs ==="
+          echo "[ERROR] CRITICAL: Validation failed - application is not working properly"
+          echo "=== annotation_service logs for debugging ==="
           docker logs annotation_service-staging --tail 100 2>/dev/null || true
           exit 1
         fi
